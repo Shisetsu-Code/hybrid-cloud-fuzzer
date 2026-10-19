@@ -6,10 +6,10 @@ import worker from '../src/worker.js';
 import {inferMode,normalizeCandidates,validateItem,normalizeDecisions} from '../src/candidates.js';
 const migration=fs.readFileSync(new URL('../migrations/0001_init.sql',import.meta.url),'utf8');
 function fixture(){
-  const sqlite=new DatabaseSync(':memory:');sqlite.exec(migration);
+  const sqlite=new DatabaseSync(':memory:');sqlite.exec(migration);sqlite.exec(fs.readFileSync(new URL('../migrations/0002_action_traces.sql',import.meta.url),'utf8'));
   const DB={prepare(sql){const stmt=sqlite.prepare(sql);const bound=args=>({query:sql,args,first:async()=>stmt.get(...args)||null,run:async()=>({meta:stmt.run(...args)}),all:async()=>({results:stmt.all(...args)})});return {...bound([]),bind:(...args)=>bound(args)}},async batch(statements){sqlite.exec('BEGIN IMMEDIATE');try{const results=statements.map(({query,args})=>({meta:sqlite.prepare(query).run(...args)}));sqlite.exec('COMMIT');return results;}catch(e){sqlite.exec('ROLLBACK');throw e;}}};
-  const images=new Map(),IMAGES={put:async(key,data)=>{images.set(key,data.slice(0));},get:async key=>images.has(key)?{
-    arrayBuffer:async()=>images.get(key).slice(0),body:new Blob([images.get(key)]).stream()}:null};
+  const images=new Map(),IMAGES={put:async(key,data)=>{images.set(key,data instanceof ArrayBuffer?data.slice(0):data);},get:async key=>images.has(key)?{
+    arrayBuffer:async()=>typeof images.get(key)==='string'?new TextEncoder().encode(images.get(key)).buffer:images.get(key).slice(0),body:new Blob([images.get(key)]).stream(),text:async()=>String(images.get(key))}:null};
   return {env:{DB,IMAGES,INGEST_TOKEN:'ingest-test',REVIEW_TOKEN:'review-test',MCP_TOKEN:'mcp-test'},images,close:()=>sqlite.close()};
 }
 const JPEG=new Uint8Array([255,216,1,2,3,4,255,217]);
@@ -174,4 +174,24 @@ test('audit_item reads a classified R2 image without lease, rejects pending and 
     const response=await worker.fetch(new Request('https://worker.example/mcp',{method:'POST',headers:{Authorization:'Bearer ingest-test','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'audit_item',arguments:{id:created.id}}})}),f.env);
     assert.equal(response.status,401);
   }finally{f.close()}
+});
+
+test('sanitized action evidence is private, idempotent, source revision checked, and independently retrievable',async()=>{
+ const f=fixture();try{
+  const root=(await (await upload(f.env,item(),null)).json()).item;
+  const c=(await (await request(f.env,'/v1/claim',{})).json()).item;
+  await request(f.env,'/v1/save',{id:c.id,leaseId:c.leaseId,revision:c.revision,sourceSha256:c.sourceSha256,reviewer:'gpt',status:'classified',selections:[{candidateId:'c0',kind:'buy'}]});
+  const parent=(await (await get(f.env,'/v1/items/'+encodeURIComponent(root.id))).json()).item;
+  const childMeta={parentId:root.id,parentSourceSha256:parent.sourceSha256,parentRevision:parent.revision,actionPath:[{kind:'buy',label:'BUY FEATURE',x:.3,y:.4,state:'BASE'}]};
+  const child=(await (await upload(f.env,item({shotId:'step-abcdef',mode:'visual',adapter:'opaque-canvas',candidates:[],metadata:childMeta}))).json()).item;
+  const trace={log:{version:'1.2',entries:[{request:{method:'POST',url:'https://demogamesfree.pragmaticplay.net/gs2c/v3/gameService',postData:{text:'action=doSpin&bet=2'}},response:{status:200}}],_webSockets:[],_notice:'Sanitized DEMO diagnostics.'}};
+  const data={traceId:'a'.repeat(64),runId:'test-run',provider:'pragmatic',gameId:'demo-a',parentId:root.id,parentSourceSha256:parent.sourceSha256,parentRevision:parent.revision,childId:child.id,trace};
+  assert.equal((await request(f.env,'/v1/traces',data,'review-test')).status,401);
+  const one=await request(f.env,'/v1/traces',data,'ingest-test');assert.equal(one.status,201);
+  const again=await request(f.env,'/v1/traces',data,'ingest-test');assert.equal(again.status,201);
+  const privateGet=await get(f.env,'/v1/traces/'+data.traceId,'ingest-test');assert.equal(privateGet.status,401);
+  const response=await get(f.env,'/v1/traces/'+data.traceId);assert.equal(response.status,200);
+  assert.equal((await response.json()).trace.log.entries[0].request.postData.text,'action=doSpin&bet=2');
+  const changed=await request(f.env,'/v1/traces',{...data,parentSourceSha256:'b'.repeat(64),traceId:'b'.repeat(64)},'ingest-test');assert.equal(changed.status,409);
+ }finally{f.close();}
 });

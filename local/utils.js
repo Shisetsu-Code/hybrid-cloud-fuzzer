@@ -12,12 +12,21 @@ export class RateLimiter{
     this.file=file;this.clock=clock;this.sleep=sleep;this.gap=Math.ceil(60000/maxPerMinute)+150;
   }
   async reserve(){
-    for(;;){const now=this.clock(),old=await readJSON(this.file,{last:0,starts:[]});
-      const starts=(old.starts||[]).filter(t=>Number.isFinite(t)&&t<=now&&t>now-60000).sort((a,b)=>a-b);
-      const earliest=starts.length>=3?starts[starts.length-3]+60001:now;
-      const next=Math.max(now,(old.last||0)+this.gap,earliest);
-      if(next>now){await this.sleep(next-now);continue;}
-      starts.push(now);await writeAtomic(this.file,{last:now,starts});return now;
+    for(;;){
+      let delay;
+      try{delay=await withLock(this.file+'.reserve.lock',async()=>{
+        const now=this.clock(),old=await readJSON(this.file,{last:0,starts:[]});
+        const starts=(old.starts||[]).filter(t=>Number.isFinite(t)&&t<=now&&t>now-60000).sort((a,b)=>a-b);
+        const earliest=starts.length>=3?starts[starts.length-3]+60001:now;
+        const next=Math.max(now,(old.last||0)+this.gap,earliest);
+        if(next>now)return next-now;
+        starts.push(now);await writeAtomic(this.file,{last:now,starts});return 0;
+      });}catch(e){
+        if(/Capture already running|Unknown collector lock/.test(e.message)){await this.sleep(100);continue;}
+        throw e;
+      }
+      if(delay>0){await this.sleep(delay);continue;}
+      return this.clock();
     }
   }
 }

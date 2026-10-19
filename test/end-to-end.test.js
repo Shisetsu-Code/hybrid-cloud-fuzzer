@@ -7,7 +7,7 @@ import {readFileSync} from 'node:fs';
 import {DatabaseSync} from 'node:sqlite';
 import worker from '../src/worker.js';
 import {runImport} from '../local/import-fuzzer.mjs';
-const sql=readFileSync(new URL('../migrations/0001_init.sql',import.meta.url),'utf8');
+const sql=readFileSync(new URL('../migrations/0001_init.sql',import.meta.url),'utf8')+'\n'+readFileSync(new URL('../migrations/0002_action_traces.sql',import.meta.url),'utf8');
 function mockWorker(){
  const db=new DatabaseSync(':memory:');db.exec(sql);
  const DB={prepare(query){const st=db.prepare(query);const bind=(args)=>({query,args,first:async()=>st.get(...args)??null,run:async()=>({meta:st.run(...args)}),all:async()=>({results:st.all(...args)})});return {...bind([]),bind:(...args)=>bind(args)};},async batch(statements){db.exec('BEGIN IMMEDIATE');try{const results=statements.map(({query,args})=>({meta:db.prepare(query).run(...args)}));db.exec('COMMIT');return results;}catch(e){db.exec('ROLLBACK');throw e;}}};

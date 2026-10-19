@@ -20,7 +20,7 @@ before(async()=>{
  mf=new Miniflare(convertV4MiniflareOptions({modules:true,script:bundle.outputFiles[0].text,compatibilityDate:'2026-10-01',compatibilityFlags:['global_fetch_strictly_public'],kvNamespaces:['OAUTH_KV'],d1Databases:['DB'],r2Buckets:['IMAGES'],bindings:{MCP_TOKEN:'legacy-mcp',INGEST_TOKEN:'ingest',REVIEW_TOKEN:'review',OAUTH_LOGIN_SECRET:password,OAUTH_ISSUER:origin},outboundService}));
  await mf.ready;
  const db=await mf.getD1Database('DB');
- for(const sql of (await readFile(new URL('../migrations/0001_init.sql',import.meta.url),'utf8')).split(';').filter(x=>x.trim()))await db.prepare(sql).run();
+ for(const sql of ((await readFile(new URL('../migrations/0001_init.sql',import.meta.url),'utf8'))+'\n'+(await readFile(new URL('../migrations/0002_action_traces.sql',import.meta.url),'utf8'))).replace(/^--.*$/gm,'').split(';').filter(x=>x.trim()))await db.prepare(sql).run();
 });
 after(async()=>{await mf?.dispose();});
 const req=(path,init={})=>mf.dispatchFetch(origin+path,{...init,redirect:'manual'});

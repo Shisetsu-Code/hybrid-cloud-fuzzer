@@ -258,3 +258,37 @@ node .\local\speed-control.mjs --cdp=http://127.0.0.1:9222 --host=demogamesfree.
 The HAR recorder is scoped to that browser tab and the specified host (including
 subdomains). It records only requests made while the command is running, and
 saves the sanitized HAR locally. Use a DEMO tab only; do not record accounts.
+
+## 4. Round continuation: reviewed buttons -> branches -> next classifier batch
+
+The **collector** remains read-only; the separate `local/round-runner.mjs` executes **reviewed actions on public DEMO games only**. Cloudflare is the private decision and evidence queue; it does not run a browser or real-money wagers.
+
+The Windows **Recopilador Hybrid Fuzzer** controller now launches a third managed worker named `Branches` alongside `Capture` and `Sync`. The `Branches` worker requires both `INGEST_TOKEN` and `REVIEW_TOKEN` already stored in `.wrangler/deployment-secrets.xml`. A `git pull` alone **does not restart** an existing local worker. Stop and restart it from the controller after updating the code. Existing DPAPI secrets are preserved.
+
+For manual operation in a PowerShell session (the manifest's `runId` must match the Cloudflare classification run):
+
+```powershell
+cd $HOME\hybrid-cloud-fuzzer
+$env:HYBRID_FUZZER_URL = 'https://hybrid-cloud-fuzzer.braian-n-l.workers.dev'
+$env:HYBRID_REVIEW_TOKEN = [Net.NetworkCredential]::new('', (Read-Host 'REVIEW_TOKEN' -AsSecureString)).Password
+$env:HYBRID_INGEST_TOKEN = [Net.NetworkCredential]::new('', (Read-Host 'INGEST_TOKEN' -AsSecureString)).Password
+node local/round-runner.mjs --manifest=examples/demos.json --out=outbox --watch --limit=5 --interval-ms=15000
+```
+
+Each poll waits for `pending=leased=needs_review=0` for **that run**, fetches decisions and current item revisions, and constructs one independent path per selected action. The parent source SHA and revision must still match before use. Every sibling starts in a fresh demo browser context, but all siblings share one Chromium process to avoid repeated launches. A shared cross-process throttle allows at most three new game starts/minute. Unknown or misaligned control geometry is blocked; ordinary BASE Spin, Autoplay and Settings are skipped unless normal demo spins are explicitly permitted with `--allow-normal-spin`. Only controls selected in the reviewed classifications are used to traverse options; no automated visual guessing occurs.
+
+After each action, the child state is saved under a deterministic `step-<hash>` shot ID in the existing outbox and uploaded to `/v1/items`. The action's sanitized HAR is retained locally in `outbox/diagnostics/` and uploaded as a size-bounded, action-correlated private R2 record. D1 stores a hashed index, keyed by source classification and child capture. `GET /v1/traces/<sha256>` requires `REVIEW_TOKEN`; `POST /v1/traces` requires `INGEST_TOKEN`. Existing items and classified decisions are never overwritten. New child records become the next classification batch. A demonstrated `doSpin`/`doBonus` network request marks `metadata.terminal=true` and `evidenceStatus='bet_request_observed'`, **not** `validated`.
+
+The durable `outbox/.round-journal.json` records `running`, `captured`, `done`, `blocked` and `uncertain`. A process crash during a click is *uncertain* and never triggers a silent second wager. A successfully captured but unuploaded branch retries only the idempotent HTTP uploads, not the click. Stale classifications, non-demo URLs and missing controls fail closed. A temporarily empty review queue **does not mean** all games are validated.
+
+### Network-only DEMO replay
+
+The saved sanitized trace records URL, method, action, POST body shape, response status/payload and WebSocket frames. Credentials, cookies, tokens and large/opaque bodies are redacted. For an explicit **HTTP-only** reproduction attempt, first review the command in dry-run mode:
+
+```powershell
+node local/replay-demo.mjs --trace=outbox/diagnostics/<record>.har --origin=https://demogamesfree.pragmaticplay.net --contains=doSpin
+```
+
+Use `--send` only for a permitted public demo and only after checking the printed request. It sends no credentials, never follows redirects and never retries mutating requests. A redacted session field is a **hard stop** until a fresh, authorized demo session provides the required value. WebSocket provider protocols are not synthetically converted into HTTP, and a captured endpoint alone does not establish a valid replay or simulate complete RNG behaviour. Never point the runner or replayer at real-money casino accounts or payment APIs.
+
+Apply the new `0002_action_traces.sql` migration before deploying the Worker. GitHub `main` is configured for Cloudflare Builds, but a local Git commit or successful Actions job alone is **not** proof of a live Worker deploy. Confirm the production build SHA, `/health`, and the authenticated trace endpoints after merging.
