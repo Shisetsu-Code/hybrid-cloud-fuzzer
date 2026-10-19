@@ -35,3 +35,13 @@ jobs:
           name: tested-source
           path: /tmp/hybrid-source.tar.gz
           retention-days: 3
+
+  windows-bootstrap:
+    name: Windows collector first-run bootstrap
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test test/collector-control.test.js test/collector-setup.test.js
