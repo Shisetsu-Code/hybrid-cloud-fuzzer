@@ -61,3 +61,22 @@ forma independiente y debe validar la versión de origen.
 
 La clasificación dura menos al evitar imágenes completas y commits por cada
 juego. No inventar métricas de velocidad: informar segundos reales por elemento.
+
+
+## Auditar clasificaciones ya guardadas (sin exportar archivos)
+
+El MCP lee directamente de Cloudflare D1: no es necesario ejecutar Wrangler,
+descargar JSON ni volver a clasificar.
+
+- `audit_classifications({runId:"hybrid-pragmatic-20261019",limit:20})`: lista
+  clasificaciones persistidas con IDs, etiquetas, rutas de controles, rectángulos
+  normalizados y decisiones; es de solo lectura.
+- Para seguir: repetir con `afterId` igual a `nextAfterId` de la respuesta
+  anterior, hasta que `hasMore=false`.
+- `audit_item({id:"<id devuelto>",includeImage:true})`: consulta una clasificación
+  anterior y, si existe, devuelve su JPEG privado desde R2 sin reclamar una tarea.
+- `status:"needs_review"` permite revisar también los casos dudosos.
+- `includeCandidates:false` reduce el volumen de datos para auditorías rápidas.
+
+Estas herramientas no modifican D1, no crean leases y no ejecutan clicks.
+Requieren la misma autenticación MCP/OAuth que el clasificador.
