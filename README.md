@@ -292,3 +292,45 @@ node local/replay-demo.mjs --trace=outbox/diagnostics/<record>.har --origin=http
 Use `--send` only for a permitted public demo and only after checking the printed request. It sends no credentials, never follows redirects and never retries mutating requests. A redacted session field is a **hard stop** until a fresh, authorized demo session provides the required value. WebSocket provider protocols are not synthetically converted into HTTP, and a captured endpoint alone does not establish a valid replay or simulate complete RNG behaviour. Never point the runner or replayer at real-money casino accounts or payment APIs.
 
 Apply the new `0002_action_traces.sql` migration before deploying the Worker. GitHub `main` is configured for Cloudflare Builds, but a local Git commit or successful Actions job alone is **not** proof of a live Worker deploy. Confirm the production build SHA, `/health`, and the authenticated trace endpoints after merging.
+
+
+### Windows: first checkout without local state
+
+Both .local-state/ and .wrangler/ are deliberately ignored by Git. On a new
+checkout, git pull does not create local configuration or recover existing
+tokens. Stop and Status now work without these files. Before Start, create
+a configuration for the **actual Cloudflare runId**, not the unrelated
+examples/demos.json sample:
+
+~~~powershell
+cd $HOME\hybrid-cloud-fuzzer
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collector-setup.ps1 -RunId hybrid-pragmatic-20261019
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collector-control.ps1 -Action Status
+~~~
+
+Without -Manifest, setup creates a private local manifest containing the exact
+run ID but zero **new** games. The Branches worker resumes existing classifications;
+Capture exits normally because the manifest contains no new game URLs.
+For a fresh catalog, supply -Manifest C:\path\to\catalog.json with the same run ID.
+Bootstrap never overwrites existing config or tokens.
+
+If .wrangler/deployment-secrets.xml is absent **and you possess the existing**
+INGEST_TOKEN and REVIEW_TOKEN, enter them securely with:
+
+~~~powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collector-setup.ps1 -ConfigureTokens
+~~~
+
+The tokens are stored in a per-Windows-user DPAPI-encrypted file, never in Git.
+This does **not** rotate Worker secrets. If the original token values are
+unavailable, creating random new local values will not authenticate.
+Recover the existing values or explicitly coordinate a credential rotation.
+
+~~~powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collector-control.ps1 -Action Start
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collector-control.ps1 -Action Status
+~~~
+
+Status reports configPresent, secretsPresent and running worker roles.
+branchesRunning=true confirms a process, not completed game validation.
+Inspect .local-state\branches-managed.stderr.log if the worker exits.
