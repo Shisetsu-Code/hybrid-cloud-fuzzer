@@ -1,3 +1,164 @@
 # Hybrid Cloud Fuzzer
 
-Initial source archive is unpacked and verified automatically by GitHub Actions. After bootstrap, this README is replaced with full deployment, extraction and MCP documentation.
+Fast **multi-provider** visual/control classifier for public game demos. It is **not** a game engine, automatic player, gambling bot or real-money casino client. No spins, payments or purchases are performed by this project.
+
+**[Controls from runtime/DOM] → D1 → MCP → decisions**. If the controls are inaccessible or unreliable: **[JPEG → private R2] → MCP vision → normalized marks**. Both paths share the same queue, locks and output contract.
+
+## Provider support
+
+| Provider | Extraction | Fallback |
+|---|---|---|
+| Pragmatic Play public demos | Read-only runtime controls (Unity/XTButton family) | JPEG for intro/unknown UI |
+| HTML-based games of any provider | Visible DOM controls, ARIA, links, toggles | JPEG |
+| Playtech, 3Oaks, RubyPlay, Belatra, other canvas providers | Generic DOM where exposed | JPEG until a specific adapter is validated |
+
+This is **provider-agnostic infrastructure**, not a claim that every provider exposes controls in an automatically extractable format. New runtime adapters can be added under `local/adapters/` and registered in `local/extract.js` without changing D1, R2, MCP or the classifier.
+
+## Repository structure
+
+- `src/` — Cloudflare Worker, D1 queue + decisions, R2 images, REST and remote MCP.
+- `local/adapters/` — Pragmatic-specific runtime extraction; provider-independent DOM extraction.
+- `local/capture.mjs` — Chromium DEMO collector for a multi-provider JSON manifest (max **3 game starts/minute**, persisted across restarts).
+- `local/import-fuzzer.mjs` — migrate existing local Fuzzer-Manual screenshots and their existing runtime metadata, **without reopening games**.
+- `local/sync.mjs` — upload controls as small JSON; upload JPEG **only for visual/hybrid** items.
+- `local/export-decisions.mjs` — retrieve classified coordinates for a separate local branch executor.
+- `mcp/stdio.mjs` — stdio bridge for Codex/other MCP clients.
+- `skills/hybrid-fuzzer/SKILL.md` — short instructions for another assistant chat.
+
+## 1. Deploy Cloudflare (one time)
+
+On Windows PowerShell, Node.js 22+:
+
+```powershell
+cd $HOME
+git clone https://github.com/Shisetsu-Code/hybrid-cloud-fuzzer.git
+cd hybrid-cloud-fuzzer
+npm install
+npx wrangler login
+npx wrangler r2 bucket create hybrid-fuzzer-images
+npx wrangler d1 create hybrid-cloud-fuzzer
+```
+
+**Copy the D1 `database_id`** returned by the last command into `wrangler.toml`, replacing `REPLACE_WITH_D1_DATABASE_UUID`.
+
+```powershell
+notepad .\wrangler.toml
+npx wrangler d1 migrations apply hybrid-cloud-fuzzer --remote
+npx wrangler secret put INGEST_TOKEN
+npx wrangler secret put REVIEW_TOKEN
+npx wrangler secret put MCP_TOKEN
+npx wrangler deploy
+```
+
+Generate three **different random secrets** locally (do not post them in chat or commit them):
+
+```powershell
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+For each `wrangler secret put`, paste a different random value. `INGEST_TOKEN` is only for adding images/controls; `REVIEW_TOKEN` is for REST classification; `MCP_TOKEN` is for reading/classifying via MCP. An R2 bucket remains private.
+
+Check the Worker URL printed by Wrangler:
+
+```powershell
+curl.exe https://hybrid-cloud-fuzzer.YOUR_ACCOUNT.workers.dev/health
+```
+
+`ok:true` requires the D1 binding and schema to be operational. The deployment is **not automatic**: requires your Cloudflare account and these commands.
+
+## 2A. Import existing Fuzzer-Manual screenshots (recommended first)
+
+In one PowerShell session:
+
+```powershell
+cd $HOME\hybrid-cloud-fuzzer
+node .\local\import-fuzzer.mjs --source="$HOME\Fuzzer-Manual\data\catalog-exports\pragmatic-20261019" --out=outbox --watch
+```
+
+In **another** PowerShell session (the ingest token stays in this shell only):
+
+```powershell
+cd $HOME\hybrid-cloud-fuzzer
+$env:HYBRID_FUZZER_URL = "https://hybrid-cloud-fuzzer.YOUR_ACCOUNT.workers.dev"
+$env:HYBRID_INGEST_TOKEN = [System.Net.NetworkCredential]::new('', (Read-Host 'INGEST_TOKEN' -AsSecureString)).Password
+node .\local\sync.mjs --out=outbox --watch
+```
+
+`--watch` polls for newly captured games. The importer skips the photos already converted locally. For previously classified records in GitHub, the classified JSON **is not migrated automatically**; the image and available control metadata are imported and requeued. For a **GitHub-only** archive, download it with GitHub CLI first or use the import scripts in Cloud-Fuzzer before local migration.
+
+## 2B. Capture new providers locally
+
+Edit `examples/demos.json` with publicly accessible DEMO URLs, using the actual provider ID. Then:
+
+```powershell
+node .\local\capture.mjs --manifest=examples/demos.json --out=outbox --rate=3 --limit=5
+```
+
+Uses **one shared Chromium process**, one game at a time, never more than 3 new page navigations per minute. It does not click automatically, not even an intro button; unresolved intro/UI goes to image fallback. Playwright `npx playwright install chromium` is needed the first time. The system can resume from previously generated outbox records. Run the sync command in another shell.
+
+For providers that expose no usable runtime or DOM controls, it still queues a JPEG. Extractor improvement can happen later without changing the user-visible workflow.
+
+## 3. MCP classification — two calls per item
+
+Configure **remote MCP** at `https://hybrid-cloud-fuzzer.YOUR_ACCOUNT.workers.dev/mcp` with bearer `MCP_TOKEN`. Or, for clients requiring stdio, run `node mcp/stdio.mjs` with `HYBRID_FUZZER_URL` and `HYBRID_MCP_TOKEN` environment variables.
+
+Tools: `next_item`, `save_classification`, `get_item`, `release_item`, `queue_stats`.
+
+1. Call `next_item({runId})`. Structured mode returns **candidate IDs and labels, without image**. Visual/hybrid mode also returns JPEG.
+2. Pick all relevant IDs/coordinates and call `save_classification` **once** with the returned `id`, `leaseId`, `revision`, `sourceSha256`. Immediately request the next.
+
+Example classification for controls:
+
+```json
+{
+  "id": "run1:pragmatic:game1:base",
+  "leaseId": "lease-from-next-item",
+  "revision": 1,
+  "sourceSha256": "64-hex-hash-from-next-item",
+  "status": "classified",
+  "reviewer": "gpt",
+  "selections": [
+    { "candidateId": "c1", "kind": "buy" },
+    { "candidateId": "c4", "kind": "navigate" }
+  ]
+}
+```
+
+For visual fallback use normalized marks:
+
+```json
+{"marks":[{"x":0.12,"y":0.35,"kind":"buy","label":"Buy Free Spins"}]}
+```
+
+The server derives coordinates from selected control rectangles, combines them with manual marks, and stores the result atomically on the item with lease/revision/hash checks. **No GUI or browser action occurs on the Worker.** An optional read-only feed exists at `GET /v1/decisions?runId=<id>&after=0` using `REVIEW_TOKEN`; export using `local/export-decisions.mjs`. Connecting these decisions to the existing Fuzzer-Manual branch executor requires a separate executor/adapter — this repository does not silently execute selections.
+
+## REST endpoints
+
+| Endpoint | Token | Function |
+|---|---|---|
+| `GET /health` | none | D1 binding check |
+| `POST /v1/items` | INGEST | JSON controls or multipart JPEG + JSON metadata |
+| `POST /v1/items/batch` | INGEST | Up to 20 structured control records |
+| `POST /v1/claim` | REVIEW | Claim next item (default 180s lease) |
+| `POST /v1/save` | REVIEW | Save all selections/marks with CAS |
+| `POST /v1/release` | REVIEW | Release lease |
+| `GET /v1/stats` | REVIEW | Counters; optional runId/provider |
+| `GET /v1/items/:id` | REVIEW | Source/decisions; no public images |
+| `GET /v1/items/:id/image` | REVIEW | Private JPEG if present |
+| `GET /v1/decisions?after=N` | REVIEW | Valid current classification records |
+| `POST /mcp` | MCP | Stateless MCP tools, image only when needed |
+
+Uploads are idempotent for identical item content. To replace a screenshot with the same ID, you must explicitly send `replace=true`. Replacing invalidates all prior marks/leases. Leases expire, preventing concurrent classifiers from corrupting the task. Review images cannot be directly accessed without appropriate tokens.
+
+## Verify locally
+
+```powershell
+npm run check
+npm test
+```
+
+Tests use real SQLite SQL with simulated D1/R2 and cover multi-provider structured/visual classification, private JPEG, leases, source replacements, import and re-synchronization. Tests **do not** prove automatic extraction for unknown canvas frameworks or Cloudflare deployment without your account.
+
+## Operational scope
+
+This handles DEMO user interfaces only. Do not supply cookies, credentials, payment sessions or real-money casino URLs. Runtime inspection is read-only. Auto-detection can be inaccurate on obscured controls: if an intro/menu overlay is present, use visual fallback and do not execute a hidden candidate. Any actual click sequence belongs to a separate local DEMO executor after review.

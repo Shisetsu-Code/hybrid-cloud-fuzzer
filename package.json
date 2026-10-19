@@ -1,0 +1,21 @@
+{
+  "name": "hybrid-cloud-fuzzer",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Multi-provider demo control catalog: structured-first, screenshot fallback, Cloudflare R2/D1 and MCP",
+  "engines": { "node": ">=22.13.0" },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "check": "node --check src/worker.js && node --check src/core.js && node --check src/mcp.js && node --check local/capture.mjs && node --check local/sync.mjs && node --check local/import-fuzzer.mjs && node --check mcp/stdio.mjs",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:remote": "wrangler d1 migrations apply hybrid-cloud-fuzzer --remote",
+    "db:local": "wrangler d1 migrations apply hybrid-cloud-fuzzer --local",
+    "capture": "node local/capture.mjs",
+    "sync": "node local/sync.mjs",
+    "import": "node local/import-fuzzer.mjs"
+  },
+  "dependencies": {"playwright": "^1.56.1"},
+  "devDependencies": {"wrangler": "^4.0.0"}
+}

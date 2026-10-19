@@ -2,8 +2,9 @@ node_modules/
 .wrangler/
 .dev.vars
 .env
+*.log
+.local-state/
+outbox/
 *.sqlite
 *.sqlite3
-*.log
-.cache/
-.local-state/
+.DS_Store

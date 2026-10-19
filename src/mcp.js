@@ -1,0 +1,64 @@
+// Stateless MCP over HTTP. No custom app/plugin installation needed for HTTP-capable clients.
+import {InputError,claim,save,release,rawItem,publicItem,stats} from './core.js';
+const text=v=>({type:'text',text:JSON.stringify(v)});
+const str={type:'string'};
+const schema=(props,required=[])=>({type:'object',properties:props,required,additionalProperties:false});
+const mark=schema({x:{type:'number',minimum:0,maximum:1},y:{type:'number',minimum:0,maximum:1},kind:{enum:['buy','navigate','pick','other']},label:str},['x','y','kind','label']);
+const choice=schema({candidateId:str,kind:{enum:['buy','navigate','pick','other']}},['candidateId','kind']);
+export const definitions=[
+  {name:'next_item',description:'Claim next screenshot or structured control block. When mode is visual/hybrid returns JPEG too. Review immediately.',inputSchema:schema({runId:str,provider:str,leaseSeconds:{type:'integer',minimum:30,maximum:900}})},
+  {name:'save_classification',description:'Save selected candidate IDs or normalized visual marks in one call. Do NOT execute any clicks here.',inputSchema:schema({id:str,leaseId:str,revision:{type:'integer'},sourceSha256:str,status:{enum:['classified','needs_review']},reviewer:str,selections:{type:'array',items:choice,maxItems:40},marks:{type:'array',items:mark,maxItems:40}},['id','leaseId','revision','sourceSha256','status','reviewer'])},
+  {name:'get_item',description:'Reload an actively leased task and its image if present.',inputSchema:schema({id:str,leaseId:str},['id','leaseId'])},
+  {name:'release_item',description:'Return leased item to the pending queue.',inputSchema:schema({id:str,leaseId:str,revision:{type:'integer'}},['id','leaseId','revision'])},
+  {name:'queue_stats',description:'Fast count of pending/leased/classified/needs_review.',inputSchema:schema({runId:str,provider:str})}
+];
+function toBase64(bytes){const b=new Uint8Array(bytes);let s='';for(let i=0;i<b.length;i+=12288)s+=btoa(String.fromCharCode(...b.subarray(i,i+12288)));return s;}
+async function loadImage(env,row){
+  if(!row.image_key)return null;
+  const obj=await env.IMAGES.get(row.image_key);if(!obj)throw new InputError('JPEG missing in R2',404);
+  return {type:'image',mimeType:'image/jpeg',data:toBase64(await obj.arrayBuffer())};
+}
+async function tool(env,name,arg){
+  switch(name){
+    case 'next_item':{
+      const item=await claim(env,arg);if(!item)return {content:[text({empty:true})]};
+      const row=await rawItem(env,item.id);
+      const image=await loadImage(env,row);
+      return {content:[text({item,classificationHint:'Choose candidate IDs when available; otherwise mark image coordinates 0..1.'}),...(image?[image]:[])]};
+    }
+    case 'save_classification':return {content:[text({saved:true,item:await save(env,arg)})]};
+    case 'release_item':return {content:[text({released:true,item:await release(env,arg)})]};
+    case 'queue_stats':return {content:[text(await stats(env,arg))]};
+    case 'get_item':{
+      const row=await rawItem(env,arg.id),now=Math.floor(Date.now()/1000);
+      if(row.status!=='leased'||row.lease_id!==arg.leaseId||row.lease_until<=now)throw new InputError('lease not active',409);
+      const image=await loadImage(env,row);
+      return {content:[text({item:publicItem(row)}),...(image?[image]:[])]};
+    }
+    default:throw new InputError('unknown tool',404);
+  }
+}
+const result=(id,data)=>({jsonrpc:'2.0',id,result:data});
+const rpcError=(id,code,message)=>({jsonrpc:'2.0',id,error:{code,message}});
+function respond(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});}
+export async function handleMcp(request,env){
+  if(request.method==='DELETE')return new Response(null,{status:204});
+  if(request.method!=='POST')return new Response(null,{status:405,headers:{Allow:'POST, DELETE'}});
+  let m;try{m=await request.json();}catch{return respond(rpcError(null,-32700,'invalid JSON'),400);}
+  if(!m||m.jsonrpc!=='2.0'||typeof m.method!=='string')return respond(rpcError(m?.id??null,-32600,'invalid request'),400);
+  if(!Object.hasOwn(m,'id'))return new Response(null,{status:202});
+  try{
+    switch(m.method){
+      case 'initialize':return respond(result(m.id,{protocolVersion:'2025-03-26',capabilities:{tools:{}},serverInfo:{name:'hybrid-cloud-fuzzer',version:'0.1.0'}}));
+      case 'ping':return respond(result(m.id,{}));
+      case 'tools/list':return respond(result(m.id,{tools:definitions}));
+      case 'tools/call':{
+        const args=m.params?.arguments||{};
+        if(typeof m.params?.name!=='string'||typeof args!=='object'||args===null||Array.isArray(args))return respond(rpcError(m.id,-32602,'invalid arguments'));
+        try{return respond(result(m.id,await tool(env,m.params.name,args)));}
+        catch(e){return respond(result(m.id,{content:[text({error:e instanceof InputError?e.message:'internal server error'})],isError:true}));}
+      }
+      default:return respond(rpcError(m.id,-32601,'method not found'));
+    }
+  }catch(e){console.error('mcp error',e);return respond(rpcError(m.id,-32603,'internal server error'));}
+}

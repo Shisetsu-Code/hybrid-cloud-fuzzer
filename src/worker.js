@@ -1,0 +1,73 @@
+import {InputError,ingest,claim,save,release,rawItem,publicItem,stats,decisionsFeed} from './core.js';
+import {handleMcp} from './mcp.js';
+
+function eqSecret(a,b){
+  if(typeof a!=='string'||typeof b!=='string'||!a||!b)return false;
+  let diff=a.length^b.length;for(let i=0;i<Math.max(a.length,b.length);i++)diff|=(a.charCodeAt(i)||0)^(b.charCodeAt(i)||0);
+  return diff===0;
+}
+function authorized(req,secret){const value=req.headers.get('Authorization')||'';return value.startsWith('Bearer ')&&eqSecret(value.slice(7),secret);}
+function json(value,status=200,extra={}){return new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...extra}});}
+function reject(){return json({error:'unauthorized'},401,{'WWW-Authenticate':'Bearer'});}
+async function readJSON(req){
+  if(Number(req.headers.get('Content-Length'))>512000)throw new InputError('request too large',413);
+  let payload;try{payload=await req.json();}catch{throw new InputError('invalid JSON');}
+  if(!payload||typeof payload!=='object'||Array.isArray(payload)||JSON.stringify(payload).length>512000)throw new InputError('invalid JSON object or payload too large');
+  return payload;
+}
+async function upload(req,env){
+  if(Number(req.headers.get('Content-Length'))>9*1024*1024)throw new InputError('image payload too large',413);
+  const mime=req.headers.get('Content-Type')||'';
+  if(mime.startsWith('multipart/form-data')){
+    const form=await req.formData();
+    let payload;try{payload=JSON.parse(form.get('metadata'));}catch{throw new InputError('invalid metadata JSON');}
+    const raw=form.get('image');if(!raw||typeof raw.arrayBuffer!=='function')throw new InputError('image required');
+    if(raw.size>8*1024*1024)throw new InputError('JPEG too large',413);
+    return json({item:await ingest(env,payload,await raw.arrayBuffer(),{replace:form.get('replace')==='true'})},201);
+  }
+  if(mime.includes('application/json')){
+    const payload=await readJSON(req);
+    return json({item:await ingest(env,payload,null,{replace:payload.replace===true})},201);
+  }
+  throw new InputError('use JSON or multipart/form-data',415);
+}
+export default {
+  async fetch(request,env){
+    try{
+      const url=new URL(request.url),p=url.pathname;
+      if(request.method==='GET'&&p==='/health'){
+        try{if(!env.DB||!env.IMAGES)throw Error('bindings absent');await env.DB.prepare('SELECT 1 AS ok').first();return json({ok:true,service:'hybrid-cloud-fuzzer',storage:'R2',database:'D1',mcp:'/mcp'});}
+        catch{return json({ok:false,error:'D1/R2 not ready'},503);}
+      }
+      if(p==='/mcp')return authorized(request,env.MCP_TOKEN)?await handleMcp(request,env):reject();
+      if(p==='/v1/items'&&request.method==='POST')return authorized(request,env.INGEST_TOKEN)?await upload(request,env):reject();
+      if(p==='/v1/items/batch'&&request.method==='POST'){
+        if(!authorized(request,env.INGEST_TOKEN))return reject();
+        const value=await readJSON(request);if(!Array.isArray(value.items)||!value.items.length||value.items.length>20)throw new InputError('1..20 items required');
+        const items=[];for(const x of value.items)items.push(await ingest(env,x));
+        return json({items},201);
+      }
+      if(p.startsWith('/v1/')){
+        if(!authorized(request,env.REVIEW_TOKEN))return reject();
+        if(p==='/v1/claim'&&request.method==='POST')return json({item:await claim(env,await readJSON(request))});
+        if(p==='/v1/save'&&request.method==='POST')return json({item:await save(env,await readJSON(request))});
+        if(p==='/v1/release'&&request.method==='POST')return json({item:await release(env,await readJSON(request))});
+        if(p==='/v1/stats'&&request.method==='GET')return json(await stats(env,{runId:url.searchParams.get('runId'),provider:url.searchParams.get('provider')}));
+        if(p==='/v1/decisions'&&request.method==='GET')return json(await decisionsFeed(env,{runId:url.searchParams.get('runId'),after:Number(url.searchParams.get('after')||0),limit:Number(url.searchParams.get('limit')||50)}));
+        const match=/^\/v1\/items\/([^/]+)(\/image)?$/.exec(p);
+        if(match&&request.method==='GET'){
+          const row=await rawItem(env,decodeURIComponent(match[1]));
+          if(!match[2])return json({item:publicItem(row)});
+          if(!row.image_key)throw new InputError('item has no image',404);
+          const object=await env.IMAGES.get(row.image_key);if(!object)throw new InputError('JPEG absent',404);
+          return new Response(object.body,{headers:{'Content-Type':'image/jpeg','Cache-Control':'private,no-store','X-Image-SHA256':row.image_sha256,'X-Content-Type-Options':'nosniff'}});
+        }
+      }
+      return json({error:'not found'},404);
+    }catch(error){
+      if(!(error instanceof InputError))console.error('worker failure',error);
+      const status=error instanceof InputError?error.status:500;
+      return json({error:status===500?'internal server error':error.message},status);
+    }
+  }
+};
