@@ -25,7 +25,7 @@ export async function ingest(env,payload,image=null,{replace=false}={}){
     imageHash=await hashHex(image);imageKey=`images/${item.runId}/${item.provider}/${item.gameId}/${imageHash}.jpg`;
   }
   if(item.mode!=='structured'&&!imageHash)throw new InputError('hybrid/visual mode requires image');
-  if(payload.imageSha256&&payload.imageSha256.toLowerCase()!==imageHash)throw new InputError('image hash mismatch');
+  if(payload.imageSha256&&(typeof payload.imageSha256!=='string'||!shaPattern.test(payload.imageSha256)||payload.imageSha256.toLowerCase()!==imageHash))throw new InputError('image hash mismatch');
   const data={runId:item.runId,provider:item.provider,gameId:item.gameId,shotId:item.shotId,mode:item.mode,state:item.state,
     adapter:item.adapter,adapterVersion:item.adapterVersion,candidates:item.candidates,metadata:item.metadata,width:item.width,height:item.height,imageHash};
   const sourceSha=await hashHex(new TextEncoder().encode(JSON.stringify(data)));
@@ -79,15 +79,21 @@ export async function save(env,payload){
   const raw=await rawItem(env,id);
   const decisions=normalizeDecisions(payload,fromJSON(raw.candidates_json,[]));
   const now=Math.floor(Date.now()/1000);
-  const result=await env.DB.prepare(`UPDATE items SET status=?,decisions_json=?,reviewer=?,reviewed_at=${dbDate},revision=revision+1,
+  // D1 batch executes as a transaction: never acknowledge a saved decision unless
+  // the history/outgoing-feed entry was durably committed in the same transaction.
+  const serialized=JSON.stringify(decisions),newRevision=revision+1;
+  const update=env.DB.prepare(`UPDATE items SET status=?,decisions_json=?,reviewer=?,reviewed_at=${dbDate},revision=revision+1,
     lease_id=NULL,lease_until=NULL,updated_at=${dbDate}
-    WHERE id=? AND status='leased' AND lease_id=? AND lease_until>? AND revision=? AND source_sha256=? RETURNING *`)
-    .bind(status,JSON.stringify(decisions),reviewer.trim(),id,leaseId,now,revision,sourceSha256.toLowerCase()).first();
-  if(!result)throw new InputError('stale lease/revision/capture; claim again',409);
-  try{await env.DB.prepare(`INSERT INTO decision_history(item_id,source_sha256,revision,reviewer,status,decisions_json) VALUES(?,?,?,?,?,?)`)
-    .bind(id,result.source_sha256,result.revision,reviewer.trim(),status,JSON.stringify(decisions)).run();}
-  catch(e){console.error('decision history write failed',e);}
-  return publicItem(result);
+    WHERE id=? AND status='leased' AND lease_id=? AND lease_until>? AND revision=? AND source_sha256=?`)
+    .bind(status,serialized,reviewer.trim(),id,leaseId,now,revision,sourceSha256.toLowerCase());
+  const history=env.DB.prepare(`INSERT OR IGNORE INTO decision_history(item_id,source_sha256,revision,reviewer,status,decisions_json)
+    SELECT id,source_sha256,revision,?,?,? FROM items
+    WHERE id=? AND revision=? AND status=? AND reviewer=? AND source_sha256=?`)
+    .bind(reviewer.trim(),status,serialized,id,newRevision,status,reviewer.trim(),sourceSha256.toLowerCase());
+  const [updated,recorded]=await env.DB.batch([update,history]);
+  if(updated.meta?.changes!==1)throw new InputError('stale lease/revision/capture; claim again',409);
+  if(recorded.meta?.changes!==1)throw new InputError('history consistency failure',500);
+  return publicItem(await rawItem(env,id));
 }
 export async function release(env,{id,leaseId,revision}={}){
   if(typeof id!=='string'||typeof leaseId!=='string'||!Number.isSafeInteger(revision))throw new InputError('invalid release');
@@ -96,6 +102,8 @@ export async function release(env,{id,leaseId,revision}={}){
   if(!row)throw new InputError('stale lease',409);return publicItem(row);
 }
 export async function stats(env,{runId=null,provider=null}={}){
+  if(runId!=null&&!/^[a-z0-9][a-z0-9_.-]{0,99}$/i.test(runId))throw new InputError('invalid runId');
+  if(provider!=null&&!/^[a-z0-9][a-z0-9_.-]{0,99}$/i.test(provider))throw new InputError('invalid provider');
   const where=[],vals=[];if(runId){where.push('run_id=?');vals.push(runId);}if(provider){where.push('provider=?');vals.push(provider);}
   const rows=await env.DB.prepare(`SELECT status,COUNT(*) AS count FROM items ${where.length?'WHERE '+where.join(' AND '):''} GROUP BY status`).bind(...vals).all();
   const counts={pending:0,leased:0,classified:0,needs_review:0};for(const row of rows.results||[])if(row.status in counts)counts[row.status]=row.count;
@@ -108,7 +116,7 @@ export async function decisionsFeed(env,{runId=null,after=0,limit=50}={}){
   const rows=await env.DB.prepare(`SELECT h.id AS seq,h.item_id AS item_id,h.revision AS revision,h.decisions_json AS decisions_json,
       i.run_id AS run_id,i.provider AS provider,i.game_id AS game_id,i.shot_id AS shot_id,i.source_sha256 AS source_sha256
     FROM decision_history h JOIN items i ON i.id=h.item_id
-    WHERE h.id>? ${where} AND h.source_sha256=i.source_sha256 AND i.status='classified' ORDER BY h.id ASC LIMIT ?`)
+    WHERE h.id>? ${where} AND h.source_sha256=i.source_sha256 AND h.revision=i.revision AND i.status='classified' ORDER BY h.id ASC LIMIT ?`)
     .bind(after,...(runId?[runId]:[]),limit).all();
   const items=(rows.results||[]).map(r=>({seq:r.seq,id:r.item_id,runId:r.run_id,provider:r.provider,gameId:r.game_id,shotId:r.shot_id,
     sourceSha256:r.source_sha256,revision:r.revision,decisions:fromJSON(r.decisions_json,{})}));

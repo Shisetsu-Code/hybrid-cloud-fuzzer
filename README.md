@@ -19,7 +19,9 @@ This is **provider-agnostic infrastructure**, not a claim that every provider ex
 - `src/` — Cloudflare Worker, D1 queue + decisions, R2 images, REST and remote MCP.
 - `local/adapters/` — Pragmatic-specific runtime extraction; provider-independent DOM extraction.
 - `local/capture.mjs` — Chromium DEMO collector for a multi-provider JSON manifest (max **3 game starts/minute**, persisted across restarts).
-- `local/import-fuzzer.mjs` — migrate existing local Fuzzer-Manual screenshots and their existing runtime metadata, **without reopening games**.
+- `local/import-fuzzer.mjs` — migrates existing local Fuzzer-Manual captures and runtime metadata without reopening games.
+- `local/import-github.mjs` — imports the old **GitHub-only** `catalog-snapshots` branch directly to the hybrid outbox; no manual download of hundreds of images.
+- `local/intro.js` / `local/select-frame.js` — safe known Pragmatic intro handling and game-iframe selection, with image fallback when geometry is uncertain.
 - `local/sync.mjs` — upload controls as small JSON; upload JPEG **only for visual/hybrid** items.
 - `local/export-decisions.mjs` — retrieve classified coordinates for a separate local branch executor.
 - `mcp/stdio.mjs` — stdio bridge for Codex/other MCP clients.
@@ -84,7 +86,7 @@ $env:HYBRID_INGEST_TOKEN = [System.Net.NetworkCredential]::new('', (Read-Host 'I
 node .\local\sync.mjs --out=outbox --watch
 ```
 
-`--watch` polls for newly captured games. The importer skips the photos already converted locally. For previously classified records in GitHub, the classified JSON **is not migrated automatically**; the image and available control metadata are imported and requeued. For a **GitHub-only** archive, download it with GitHub CLI first or use the import scripts in Cloud-Fuzzer before local migration.
+`--watch` polls for newly captured games. The importer skips the photos already converted locally. For previously classified records in GitHub, the classified JSON **is not migrated automatically**; the image and available control metadata are imported and requeued. For a **GitHub-only** archive, run `node local/import-github.mjs --out=outbox` to fetch the public `Fuzzer-Manual/catalog-snapshots` screenshots directly to outbox. The importer is resumable and does not launch games. Then use the same sync command.
 
 ## 2B. Capture new providers locally
 
@@ -94,7 +96,7 @@ Edit `examples/demos.json` with publicly accessible DEMO URLs, using the actual 
 node .\local\capture.mjs --manifest=examples/demos.json --out=outbox --rate=3 --limit=5
 ```
 
-Uses **one shared Chromium process**, one game at a time, never more than 3 new page navigations per minute. It does not click automatically, not even an intro button; unresolved intro/UI goes to image fallback. Playwright `npx playwright install chromium` is needed the first time. The system can resume from previously generated outbox records. Run the sync command in another shell.
+Uses **one shared Chromium process**, one game at a time, never more than 3 new page navigations per minute. It only dismisses a **single verified known Pragmatic INTRO button** (disable with `--no-skip-intro`); never purchases or spins. Unknown provider intro/UI stays on image fallback. Playwright `npx playwright install chromium` is needed the first time. The system can resume from previously generated outbox records. Run the sync command in another shell.
 
 For providers that expose no usable runtime or DOM controls, it still queues a JPEG. Extractor improvement can happen later without changing the user-visible workflow.
 
@@ -102,10 +104,10 @@ For providers that expose no usable runtime or DOM controls, it still queues a J
 
 Configure **remote MCP** at `https://hybrid-cloud-fuzzer.YOUR_ACCOUNT.workers.dev/mcp` with bearer `MCP_TOKEN`. Or, for clients requiring stdio, run `node mcp/stdio.mjs` with `HYBRID_FUZZER_URL` and `HYBRID_MCP_TOKEN` environment variables.
 
-Tools: `next_item`, `save_classification`, `get_item`, `release_item`, `queue_stats`.
+Tools: `next_item`, `save_classification`, **`save_and_next`**, `get_item`, `release_item`, `queue_stats`. For exact commands see [docs/MCP_QUICKSTART.md](docs/MCP_QUICKSTART.md).
 
 1. Call `next_item({runId})`. Structured mode returns **candidate IDs and labels, without image**. Visual/hybrid mode also returns JPEG.
-2. Pick all relevant IDs/coordinates and call `save_classification` **once** with the returned `id`, `leaseId`, `revision`, `sourceSha256`. Immediately request the next.
+2. Pick all relevant IDs/coordinates and call **`save_and_next`** once with `id`, `leaseId`, `revision`, `sourceSha256` and `runId`: it saves and claims the next item in a single round trip. Alternatively, use `save_classification` then `next_item`.
 
 Example classification for controls:
 
@@ -130,7 +132,7 @@ For visual fallback use normalized marks:
 {"marks":[{"x":0.12,"y":0.35,"kind":"buy","label":"Buy Free Spins"}]}
 ```
 
-The server derives coordinates from selected control rectangles, combines them with manual marks, and stores the result atomically on the item with lease/revision/hash checks. **No GUI or browser action occurs on the Worker.** An optional read-only feed exists at `GET /v1/decisions?runId=<id>&after=0` using `REVIEW_TOKEN`; export using `local/export-decisions.mjs`. Connecting these decisions to the existing Fuzzer-Manual branch executor requires a separate executor/adapter — this repository does not silently execute selections.
+The server derives coordinates from selected control rectangles, combines them with manual marks, and stores the result **and its outgoing feed history in one D1 transaction** with lease/revision/hash checks. **No GUI or browser action occurs on the Worker.** An optional read-only feed exists at `GET /v1/decisions?runId=<id>&after=0` using `REVIEW_TOKEN`; export using `local/export-decisions.mjs`. Connecting these decisions to the existing Fuzzer-Manual branch executor requires a separate executor/adapter — this repository does not silently execute selections.
 
 ## REST endpoints
 
@@ -157,8 +159,20 @@ npm run check
 npm test
 ```
 
-Tests use real SQLite SQL with simulated D1/R2 and cover multi-provider structured/visual classification, private JPEG, leases, source replacements, import and re-synchronization. Tests **do not** prove automatic extraction for unknown canvas frameworks or Cloudflare deployment without your account.
+Tests use real SQLite SQL with simulated D1/R2 and cover multi-provider structured/visual classification, private JPEG, transactional leases/history, source replacements, import and re-synchronization. After deployment run `npm run verify:deploy` with `HYBRID_FUZZER_URL`, `HYBRID_MCP_TOKEN` and `HYBRID_REVIEW_TOKEN` set privately. Tests **do not** prove automatic extraction for unknown canvas frameworks or Cloudflare deployment without your account.
 
 ## Operational scope
 
 This handles DEMO user interfaces only. Do not supply cookies, credentials, payment sessions or real-money casino URLs. Runtime inspection is read-only. Auto-detection can be inaccurate on obscured controls: if an intro/menu overlay is present, use visual fallback and do not execute a hidden candidate. Any actual click sequence belongs to a separate local DEMO executor after review.
+
+## Codex deployment — no ZIP, patch or manual upload
+
+**This GitHub `main` branch is the authoritative complete source.** To deploy, ask
+Codex to clone/pull this repository, run tests and deploy Cloudflare by following
+[docs/CODEX_HANDOFF.md](docs/CODEX_HANDOFF.md). Verified scope is in
+[docs/VERIFICATION.md](docs/VERIFICATION.md).
+
+The **existing Cloud-Fuzzer MCP remains operational and independent**. Hybrid
+Cloud Fuzzer deploys under a different Worker URL with its own D1, R2 and MCP.
+Do not remove or replace the legacy MCP before the new MCP passes live checks.
+Do not rotate existing secrets without authorization.

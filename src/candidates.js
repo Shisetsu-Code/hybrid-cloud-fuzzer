@@ -33,6 +33,9 @@ export function inferMode({state='UNKNOWN',candidates=[],opaqueCanvas=false,forc
   if(state==='INTRO')return 'visual';
   const meaningful=candidates.filter(c=>c.confidence>=0.65&&/(buy|purchase|feature|bonus|ante|special bet|option|select|play|continue|start|free spins|respins|collect|gamble)/i.test(`${c.label} ${c.path||''}`));
   if(!candidates.length||!meaningful.length)return 'visual';
+  // The provider may still be displaying an opaque overlay or loading scene.
+  // One accessible page button is not proof that an unknown canvas is understood.
+  if(state==='UNKNOWN'&&opaqueCanvas)return 'hybrid';
   if(opaqueCanvas&&meaningful.length<candidates.length)return 'hybrid';
   return 'structured';
 }

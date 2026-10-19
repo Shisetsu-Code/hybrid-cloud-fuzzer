@@ -8,3 +8,7 @@ outbox/
 *.sqlite
 *.sqlite3
 .DS_Store
+outbox/
+classified-actions.json
+*.synced.json
+*.throttle.json

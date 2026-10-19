@@ -5,7 +5,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {cli,safeId,safeHttps,readJSON,writeAtomic,RateLimiter,withLock} from './utils.js';
-import {extractFromFrame} from './extract.js';
+import {bestFrame,screenshotBox} from './select-frame.js';
+import {dismissKnownIntro} from './intro.js';
 const args=cli(process.argv.slice(2));
 const base=path.resolve(args.out||'outbox');
 const listPath=path.resolve(args.manifest||'examples/demos.json');
@@ -20,27 +21,6 @@ const headless=args.headed?false:true;
 const imageQuality=Number(args.quality||64);
 if(!Number.isInteger(imageQuality)||imageQuality<35||imageQuality>90)throw Error('JPEG quality 35..90');
 let {chromium}=await import('playwright');
-async function bestFrame(page,provider){
-  const frames=page.frames().filter(f=>!f.isDetached());
-  const all=[];
-  for(const frame of frames){
-    const data=await extractFromFrame(frame,{provider,forceImage:!!args['always-image']});
-    const semantic=data.candidates.filter(c=>/buy|bonus|feature|ante|free spins|respins|pick|purchase|options?/i.test(`${c.label} ${c.path||''}`)).length;
-    const weight=semantic*100+data.candidates.length+(data.adapter==='pragmatic-runtime'?45:0)+(data.metadata.opaqueCanvas?20:0);
-    all.push({frame,data,weight});
-  }
-  return all.sort((a,b)=>b.weight-a.weight)[0];
-}
-async function screenshotBox(page,frame){
-  if(frame===page.mainFrame())return null;
-  try{
-    const box=await (await frame.frameElement()).boundingBox();
-    const viewport=page.viewportSize();
-    if(!box||!viewport)return null;
-    const x=Math.max(0,box.x),y=Math.max(0,box.y),right=Math.min(viewport.width,box.x+box.width),bottom=Math.min(viewport.height,box.y+box.height);
-    return right-x>10&&bottom-y>10?{x,y,width:right-x,height:bottom-y}:null;
-  }catch{return null;}
-}
 async function run(){
   const browser=await chromium.launch({headless});
   let success=0,failed=0,done=0;let stop=false;
@@ -62,18 +42,24 @@ async function run(){
         const page=await context.newPage();page.setDefaultNavigationTimeout(40000);
         await page.goto(url,{waitUntil:'domcontentloaded'});
         await page.waitForTimeout(Math.min(Number(args['wait-ms']||6500),25000));
-        let inspected=await bestFrame(page,provider);
+        let inspected=await bestFrame(page,provider,{forceImage:!!args['always-image']});
         // Explicit wait and re-check if a later intro/overlay appears.
         await page.waitForTimeout(1000);
-        inspected=await bestFrame(page,provider);
+        inspected=await bestFrame(page,provider,{forceImage:!!args['always-image']});
         if(!inspected)throw Error('no page frame');
-        const box=await screenshotBox(page,inspected.frame);
-        const image=await page.screenshot({type:'jpeg',quality:imageQuality,...(box?{clip:box}:{})});
-        const width=Math.round(box?.width||page.viewportSize().width),height=Math.round(box?.height||page.viewportSize().height);
+        if(provider==='pragmatic'&&inspected.data.state==='INTRO'&&!args['no-skip-intro']){
+          const intro=await dismissKnownIntro(page,inspected,{inspect:()=>bestFrame(page,provider,{forceImage:!!args['always-image']})});
+          inspected=intro.selected;
+        }
+        const {clip,aligned}=await screenshotBox(page,inspected.frame);
+        const image=await page.screenshot({type:'jpeg',quality:imageQuality,...(clip?{clip}:{})});
+        const width=Math.round(clip?.width||page.viewportSize().width),height=Math.round(clip?.height||page.viewportSize().height);
+        // If the frame was clipped/zoomed, its normalized controls do not align to the JPEG.
+        if(!aligned){inspected.data={...inspected.data,mode:'visual',candidates:[],adapter:'unaligned-frame',metadata:{...inspected.data.metadata,frameNotAligned:true}};}
         const info={runId:catalog.runId,provider,gameId:game.id,shotId,state:inspected.data.state,mode:inspected.data.mode,
           adapter:inspected.data.adapter,adapterVersion:inspected.data.adapterVersion,candidates:inspected.data.candidates,
           width,height,metadata:{url,opaqueCanvas:inspected.data.metadata.opaqueCanvas,frameUrl:inspected.frame.url(),
-            collectedAt:new Date().toISOString(),imageRef:file+'.jpg',captureNotes:'DEMO only; no clicks, spins or purchases'}};
+            collectedAt:new Date().toISOString(),imageRef:file+'.jpg',frameAligned:aligned,captureNotes:'DEMO; only a verified Pragmatic intro may be dismissed; no feature purchases or spins are automated'}};
         // Screenshot is kept locally for all items; remote upload uses it only for visual/hybrid by default.
         await fs.mkdir(base,{recursive:true});
         await fs.writeFile(jpegFile+'.tmp',image);await fs.rename(jpegFile+'.tmp',jpegFile);

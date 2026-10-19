@@ -10,7 +10,7 @@ const args=cli(process.argv.slice(2));
 const source=path.resolve(args.source||'.');if(process.argv[1]?.endsWith('import-fuzzer.mjs')&&!args.source)throw Error('--source=.../Fuzzer-Manual/data/catalog-exports/<run> required');
 const out=path.resolve(args.out||'outbox');
 const interval=Number(args['interval-ms']||12000);if(!Number.isInteger(interval)||interval<2000)throw Error('interval-ms >=2000 required');
-function convert(row,meta,runId){
+export function convert(row,meta,runId){
   const provider=safeId(row.provider||meta.provider||'pragmatic','provider'),gameId=safeId(row.slug||meta.slug,'slug');
   const shotId=safeId(`task-${row.taskId}`,'shotId');
   const candidates=(meta.controls||[]).filter(c=>c?.hit&&c.hit.w>0&&c.hit.h>0&&c.hit.x>=0&&c.hit.y>=0&&c.hit.x+c.hit.w<=1.00001&&c.hit.y+c.hit.h<=1.00001).slice(0,220).map(c=>{

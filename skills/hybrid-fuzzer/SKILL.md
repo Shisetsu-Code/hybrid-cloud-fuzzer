@@ -15,9 +15,9 @@ Clasificar el máximo número de capturas/bloques por minuto, sin análisis inne
 2. Leer `provider`, `gameId`, `mode`, `state`, `candidates`, e imagen solo si la respuesta la incluye.
 3. Si hay controles fiables, elegir **todos** los IDs relevantes en una pasada: compra `buy`, menú/continuación `navigate`, selección `pick`, opción extra/Ante `other`.
 4. Si hay imagen, marcar las coordenadas normalizadas `(x,y)` de todos los puntos relevantes. No usar OCR ni investigar HAR.
-5. Ejecutar `save_classification` **una sola vez** con `id`, `leaseId`, `revision`, `sourceSha256`, `reviewer="gpt"`, `status="classified"`, y `selections` o `marks`.
+5. Ejecutar `save_and_next` **una sola vez** con `id`, `leaseId`, `revision`, `sourceSha256`, `reviewer="gpt"`, `status="classified"`, `runId` y `selections` o `marks`. Esta operación guarda y recibe el siguiente elemento; usar `save_classification` solo si el cliente no soporta `save_and_next`.
 6. Si no hay puntos, guardar `selections:[]`, `marks:[]`; si no es fiable, `status="needs_review"`. No confundir una imagen sin botones visibles con un juego sin compras.
-7. Tras la confirmación del MCP, responder solo `juego: N puntos, guardado, X s` y pasar a siguiente.
+7. Tras la confirmación del MCP, responder solo `juego: N puntos, guardado, X s` y usar el siguiente elemento ya incluido. Medir tiempo real sin inventar cifras.
 
 ## Prohibido
 

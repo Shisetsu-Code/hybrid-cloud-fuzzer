@@ -36,7 +36,9 @@ export default {
     try{
       const url=new URL(request.url),p=url.pathname;
       if(request.method==='GET'&&p==='/health'){
-        try{if(!env.DB||!env.IMAGES)throw Error('bindings absent');await env.DB.prepare('SELECT 1 AS ok').first();return json({ok:true,service:'hybrid-cloud-fuzzer',storage:'R2',database:'D1',mcp:'/mcp'});}
+        try{if(!env.DB||!env.IMAGES)throw Error('bindings absent');const schema=await env.DB.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name IN ('items','decision_history')").first();
+          if(Number(schema?.count)!==2)throw Error('D1 migration missing');
+          return json({ok:true,service:'hybrid-cloud-fuzzer',schemaVersion:1,storage:'R2',database:'D1',mcp:'/mcp'});}
         catch{return json({ok:false,error:'D1/R2 not ready'},503);}
       }
       if(p==='/mcp')return authorized(request,env.MCP_TOKEN)?await handleMcp(request,env):reject();

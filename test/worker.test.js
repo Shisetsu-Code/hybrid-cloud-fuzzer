@@ -7,7 +7,7 @@ import {inferMode,normalizeCandidates,validateItem,normalizeDecisions} from '../
 const migration=fs.readFileSync(new URL('../migrations/0001_init.sql',import.meta.url),'utf8');
 function fixture(){
   const sqlite=new DatabaseSync(':memory:');sqlite.exec(migration);
-  const DB={prepare(sql){const stmt=sqlite.prepare(sql);const bound=args=>({first:async()=>stmt.get(...args)||null,run:async()=>({meta:stmt.run(...args)}),all:async()=>({results:stmt.all(...args)})});return {...bound([]),bind:(...args)=>bound(args)}}};
+  const DB={prepare(sql){const stmt=sqlite.prepare(sql);const bound=args=>({query:sql,args,first:async()=>stmt.get(...args)||null,run:async()=>({meta:stmt.run(...args)}),all:async()=>({results:stmt.all(...args)})});return {...bound([]),bind:(...args)=>bound(args)}},async batch(statements){sqlite.exec('BEGIN IMMEDIATE');try{const results=statements.map(({query,args})=>({meta:sqlite.prepare(query).run(...args)}));sqlite.exec('COMMIT');return results;}catch(e){sqlite.exec('ROLLBACK');throw e;}}};
   const images=new Map(),IMAGES={put:async(key,data)=>{images.set(key,data.slice(0));},get:async key=>images.has(key)?{
     arrayBuffer:async()=>images.get(key).slice(0),body:new Blob([images.get(key)]).stream()}:null};
   return {env:{DB,IMAGES,INGEST_TOKEN:'ingest-test',REVIEW_TOKEN:'review-test',MCP_TOKEN:'mcp-test'},images,close:()=>sqlite.close()};
@@ -128,6 +128,6 @@ test('MCP structured task has no image payload, tools list is present and auth r
     const bad=await worker.fetch(new Request('https://worker.example/mcp',{method:'POST',headers:{Authorization:'Bearer review-test','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})}),f.env);
     assert.equal(bad.status,401);
     const list=await worker.fetch(new Request('https://worker.example/mcp',{method:'POST',headers:{Authorization:'Bearer mcp-test','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})}),f.env);
-    assert.equal((await list.json()).result.tools.length,5);
+    assert.equal((await list.json()).result.tools.length,6);
   }finally{f.close()}
 });
