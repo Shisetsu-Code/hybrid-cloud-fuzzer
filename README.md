@@ -232,3 +232,14 @@ node .\local\speed-control.mjs --cdp=http://127.0.0.1:9222 --host=demogamesfree.
 The CDP port must already be enabled on the browser. This does not start a
 browser or make any clicks. Use `--speed=1` to return the timers to normal.
 Avoid running it against non-demo tabs or authenticated real-money sessions.
+
+To passively record a **live DEMO spin** in an existing CDP-enabled browser,
+without clicking or spinning from this tool:
+
+```powershell
+node .\local\speed-control.mjs --cdp=http://127.0.0.1:9222 --host=demogamesfree.pragmaticplay.net --speed=4 --har=outbox/diagnostics/live-demo.har --seconds=90
+```
+
+The HAR recorder is scoped to that browser tab and the specified host (including
+subdomains). It records only requests made while the command is running, and
+saves the sanitized HAR locally. Use a DEMO tab only; do not record accounts.

@@ -78,3 +78,16 @@ test('MCP exposes sanitized HAR endpoint/action summary but not local diagnostic
   assert.equal(result.metadata.networkDiagnostics.file,undefined);
   assert.ok(!JSON.stringify(result).includes('secret.har'));
 });
+
+test('single-tab recorder filters out other hosts and captures page WebSocket frames',async()=>{
+  const page=new EventEmitter();
+  const recorder=createNetworkRecorder(page,{urlFilter:url=>new URL(url).hostname==='demo.example.org'});
+  const makeReq=url=>({url:()=>url,method:()=> 'GET',headers:()=>({}),postData:()=>null});
+  page.emit('request',makeReq('https://unrelated.example.com/account?email=secret'));
+  page.emit('request',makeReq('https://demo.example.org/spin?action=doSpin'));
+  const ws=new EventEmitter();ws.url=()=> 'wss://demo.example.org/ws';page.emit('websocket',ws);
+  ws.emit('framesent',{payload:'{"action":"doSpin"}'});
+  const out=await recorder.finish();
+  assert.equal(out.summary.requests,1);assert.equal(out.summary.webSocketFrames,1);
+  assert.ok(!JSON.stringify(out.har).includes('unrelated.example.com'));
+});

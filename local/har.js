@@ -87,14 +87,14 @@ export function summarizeHar(har){
     truncated:Boolean(har.log._truncated)};
 }
 
-export function createNetworkRecorder(context,{maxEntries=350,maxFrames=150,bodyLimit=12000}={}){
+export function createNetworkRecorder(context,{maxEntries=350,maxFrames=150,bodyLimit=12000,urlFilter=()=>true}={}){
   if(!Number.isInteger(maxEntries)||maxEntries<1||maxEntries>2000)throw Error('maxEntries out of range');
   const entries=[],wsFrames=[],pending=new Set(),requestEntries=new WeakMap();
   let stopped=false,truncated=false;
   const onRequest=req=>{
     if(stopped)return;
     if(entries.length>=maxEntries){truncated=true;return;}
-    const url=sanitizeUrl(req.url());if(url.startsWith('['))return;
+    const url=sanitizeUrl(req.url());if(url.startsWith('[')||!urlFilter(url))return;
     const headers=req.headers?.()||{};
     let post=null;try{post=sanitizePayload(req.postData?.(),headers['content-type']||'');}catch{}
     const e={startedDateTime:new Date().toISOString(),time:0,request:{method:req.method(),url,httpVersion:'HTTP/1.1',headers:safeHeader(headers),queryString:[],cookies:[],headersSize:-1,bodySize:-1,...(post?{postData:{mimeType:headers['content-type']||'',text:post}}:{})},
@@ -124,6 +124,7 @@ export function createNetworkRecorder(context,{maxEntries=350,maxFrames=150,body
   const onPage=page=>{
     const onWS=socket=>{
       const url=sanitizeUrl(socket.url());
+      if(!urlFilter(url))return;
       const record=direction=>event=>{
         if(stopped)return;
         if(wsFrames.length>=maxFrames){truncated=true;return;}
@@ -135,7 +136,9 @@ export function createNetworkRecorder(context,{maxEntries=350,maxFrames=150,body
     page.on('websocket',onWS);pageHandlers.set(page,onWS);
   };
   context.on('request',onRequest);context.on('response',onResponse);context.on('requestfailed',onFailed);
-  context.on('page',onPage);for(const page of context.pages?.()||[])onPage(page);
+  context.on('page',onPage);
+  if(typeof context.pages==='function'){for(const page of context.pages())onPage(page);}
+  else onPage(context); // Playwright Page can be used to record one tab only.
   return {
     async finish(){
       stopped=true;
