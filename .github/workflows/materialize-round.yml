@@ -1,0 +1,33 @@
+name: Materialize reviewed round executor
+on:
+  push:
+    branches: [feat/round-executor-20261019]
+    paths:
+      - '_integration/round-20261019.patch.gz'
+permissions:
+  contents: write
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify and apply source patch
+        run: |
+          gzip -dc _integration/round-20261019.patch.gz | git apply --check
+          gzip -dc _integration/round-20261019.patch.gz | git apply
+      - run: npm install --ignore-scripts
+      - run: npm run check
+      - run: npm test
+      - name: Commit reviewed source, remove transport archive
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git rm _integration/round-20261019.patch.gz
+          git add -A
+          git commit -m "feat: execute reviewed demo branches and persist sanitized HTTP traces"
+          git push origin HEAD:refs/heads/feat/round-executor-20261019
