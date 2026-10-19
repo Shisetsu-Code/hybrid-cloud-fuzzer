@@ -1,5 +1,31 @@
 # Hybrid Fuzzer MCP — integración y clasificación rápida
 
+## ChatGPT: conexión con OAuth
+
+URL desplegada: `https://hybrid-cloud-fuzzer.braian-n-l.workers.dev/mcp`.
+Agregar un servidor MCP personalizado y elegir **OAuth**. No ingresar el
+`MCP_TOKEN` en ChatGPT ni configurar un client secret manualmente: el servidor
+admite Client ID Metadata Documents y registro dinámico de clientes.
+
+Al conectar, se abre la página de Hybrid Cloud Fuzzer. Verificar el nombre del
+cliente y el dominio de destino, ingresar la **clave privada de conexión** y
+pulsar **Autorizar**. Es una clave independiente de Cloudflare y de ChatGPT;
+el operador la configura como secreto `OAUTH_LOGIN_SECRET` (32 caracteres o más,
+generados al azar). En el equipo del despliegue, `scripts/copy-oauth-key.ps1`
+copia la clave cifrada con Windows DPAPI al portapapeles sin mostrarla.
+
+OAuth usa authorization code con PKCE S256 para clientes públicos, access tokens
+de una hora y refresh tokens rotatorios con duración máxima de 30 días. El
+consentimiento queda ligado al navegador y el grant solo permite acceso al MCP;
+no habilita `/v1/items` ni la API de revisión. El almacenamiento OAuth usa el
+binding `OAUTH_KV`, separado de las capturas y del Cloud-Fuzzer anterior.
+
+Para verificar un despliegue: `npm run verify:oauth`, con `HYBRID_FUZZER_URL`
+y `HYBRID_OAUTH_LOGIN_SECRET` en el entorno privado. Crea un cliente de prueba,
+comprueba PKCE, renovación y MCP, y revoca su grant al terminar.
+
+## Clientes con token Bearer o stdio
+
 **Remoto**: `https://<YOUR_SUBDOMAIN>.workers.dev/mcp` (HTTP POST stateless).
 Header `Authorization: Bearer <MCP_TOKEN>`. Solo el operador debe conocer el token.
 
