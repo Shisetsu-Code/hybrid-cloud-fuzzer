@@ -182,3 +182,53 @@ The **existing Cloud-Fuzzer MCP remains operational and independent**. Hybrid
 Cloud Fuzzer deploys under a different Worker URL with its own D1, R2 and MCP.
 Do not remove or replace the legacy MCP before the new MCP passes live checks.
 Do not rotate existing secrets without authorization.
+
+## Provider diagnostics (sanitized HAR) and browser speed
+
+The **local** collector can learn network endpoint/action shapes for providers whose
+DOM/runtime controls are not accessible. It does **not** automatically synthesize a
+trusted adapter from a HAR: network actions alone do not prove which buttons are
+visible. An adapter must be validated against a screenshot or runtime controls.
+
+```powershell
+cd $HOME\hybrid-cloud-fuzzer
+git pull --ff-only
+node .\local\capture.mjs --manifest=examples/demos.json --out=outbox --rate=3 --speed=4 --har=fallback
+```
+
+- `--har=fallback` (**default**) saves a **sanitized HAR 1.2** under
+  `outbox/diagnostics/<run>__<provider>__<game>__<shot>.har` for `visual` or
+  `hybrid` captures, unknown states and intros. Failed loads retain a
+  `.failed.har` diagnostic if requests were recorded.
+- `--har=all` saves a sanitized HAR for every game, including structured ones.
+  `--har=off` disables it. HTTP requests/responses and WebSocket frames are
+  recorded with bounded limits. Cookie, authorization and token values are
+  redacted; large or opaque bodies and JavaScript source are not stored.
+- The collector sends only a **small sanitized HAR summary** (endpoints and
+  action names) to D1 as `metadata.networkDiagnostics`, available through the
+  MCP alongside the image or candidate IDs. The HAR file itself **stays local**
+  and is not uploaded to R2 by `local/sync.mjs`.
+- To inspect one HAR locally:
+
+```powershell
+node .\local\har-report.mjs .\outbox\diagnostics\GAME.har
+```
+
+`--speed=1` (default) leaves the browser untouched. `--speed=2`, `4` or `8`
+accelerates **game-frame JavaScript timers and requestAnimationFrame time**;
+this can shorten some intro/bonus/spin animations. It does **not** accelerate
+network requests, server-side game outcomes or the 3-new-games/minute throttle.
+It is opt-in because some engines do not tolerate virtual-time changes.
+`local/speed.js` exports `installSpeed(frame,factor)` for reuse in a separate
+Playwright DEMO branch executor. This collector does not perform spins.
+
+If another local Chromium browser exposes a CDP debugging port, speed can be
+changed while that browser is running (only the explicitly selected demo host):
+
+```powershell
+node .\local\speed-control.mjs --cdp=http://127.0.0.1:9222 --host=demogamesfree.pragmaticplay.net --speed=4 --watch
+```
+
+The CDP port must already be enabled on the browser. This does not start a
+browser or make any clicks. Use `--speed=1` to return the timers to normal.
+Avoid running it against non-demo tabs or authenticated real-money sessions.

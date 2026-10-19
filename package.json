@@ -9,7 +9,7 @@
   },
   "scripts": {
     "test": "node --test test/*.test.js",
-    "check": "node --check src/entry.js && node --check src/oauth.js && node --check src/worker.js && node --check src/core.js && node --check src/mcp.js && node --check local/capture.mjs && node --check local/sync.mjs && node --check local/import-fuzzer.mjs && node --check local/import-github.mjs && node --check local/intro.js && node --check local/select-frame.js && node --check mcp/stdio.mjs && node --check scripts/verify-deployment.mjs && node --check scripts/verify-oauth.mjs",
+    "check": "node --check src/entry.js && node --check src/oauth.js && node --check src/worker.js && node --check src/core.js && node --check src/mcp.js && node --check local/capture.mjs && node --check local/har.js && node --check local/har-report.mjs && node --check local/speed.js && node --check local/speed-control.mjs && node --check local/sync.mjs && node --check local/import-fuzzer.mjs && node --check local/import-github.mjs && node --check local/intro.js && node --check local/select-frame.js && node --check mcp/stdio.mjs && node --check scripts/verify-deployment.mjs && node --check scripts/verify-oauth.mjs",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "build:cloudflare": "npm run check && npm test",
@@ -21,7 +21,9 @@
     "import": "node local/import-fuzzer.mjs",
     "import:github": "node local/import-github.mjs",
     "verify:deploy": "node scripts/verify-deployment.mjs",
-    "verify:oauth": "node scripts/verify-oauth.mjs"
+    "verify:oauth": "node scripts/verify-oauth.mjs",
+    "har:report": "node local/har-report.mjs",
+    "speed:control": "node local/speed-control.mjs"
   },
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "1.2.3",

@@ -15,11 +15,14 @@ export const definitions=[
   {name:'release_item',description:'Return leased item to the pending queue.',inputSchema:schema({id:str,leaseId:str,revision:{type:'integer'}},['id','leaseId','revision'])},
   {name:'queue_stats',description:'Fast count of pending/leased/classified/needs_review.',inputSchema:schema({runId:str,provider:str})}
 ];
-function compact(item){
+export function compact(item){
   if(!item)return item;
   const {metadata,candidates,...other}=item;
   const minimalMetadata={};
   for(const key of ['url','frameUrl','opaqueCanvas','frameAligned','source'])if(metadata?.[key]!=null)minimalMetadata[key]=metadata[key];
+  if(metadata?.networkDiagnostics?.summary){
+    minimalMetadata.networkDiagnostics={format:'sanitized-har-1.2',summary:metadata.networkDiagnostics.summary};
+  }
   return {...other,candidates:(candidates||[]).map(({id,label,role,rect,confidence})=>({id,label,role,rect,confidence})),metadata:minimalMetadata};
 }
 function toBase64(bytes){const b=new Uint8Array(bytes);let s='';for(let i=0;i<b.length;i+=12288)s+=btoa(String.fromCharCode(...b.subarray(i,i+12288)));return s;}
