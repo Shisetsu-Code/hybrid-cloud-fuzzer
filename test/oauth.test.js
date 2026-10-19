@@ -58,6 +58,23 @@ test('Consent denies wrong password, cross-site POST and stolen browser handle',
  assert.equal((await approve(flow,'wrong')).status,401);
  assert.equal((await approve(flow,password,{Origin:'https://evil.example'})).status,403);
  assert.equal((await approve(flow,password,{Cookie:''})).status,400);
+ assert.equal((await approve(flow,password,{Origin:'null'})).status,403);
+});
+test('Native form submission keeps the browser Origin instead of tainting it through Referrer-Policy',async()=>{
+ const c=await client(),flow=await consent(c);
+ // HTML form POSTs are non-CORS requests. Fetch's origin serialization returns
+ // null under no-referrer, even when the form posts to its own origin.
+ const policy=flow.r.headers.get('referrer-policy');
+ const browserOrigin=policy==='no-referrer'?'null':origin;
+ const approved=await approve(flow,password,{Origin:browserOrigin});
+ assert.equal(approved.status,302,'The served page must allow its own native browser form POST');
+});
+test('Browser form CSP allows the validated OAuth callback redirect and no unrelated host',async()=>{
+ const c=await client(),flow=await consent(c);
+ const formAction=flow.r.headers.get('content-security-policy').split(';').map(s=>s.trim()).find(s=>s.startsWith('form-action '));
+ const allowed=formAction.split(/\s+/).slice(1);
+ assert.deepEqual(allowed,["'self'",new URL(c.redirect_uris[0]).origin]);
+ assert.ok(!allowed.includes('*'));assert.ok(!allowed.includes('https://evil.example'));
 });
 test('OAuth rejects redirect substitution, missing PKCE, unsupported scopes and mismatched verifier',async()=>{
  const c=await client();assert.notEqual((await consent(c,{redirect_uri:'https://evil.example/callback'})).r.status,200);
