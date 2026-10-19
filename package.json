@@ -12,6 +12,8 @@
     "check": "node --check src/entry.js && node --check src/oauth.js && node --check src/worker.js && node --check src/core.js && node --check src/mcp.js && node --check local/capture.mjs && node --check local/sync.mjs && node --check local/import-fuzzer.mjs && node --check local/import-github.mjs && node --check local/intro.js && node --check local/select-frame.js && node --check mcp/stdio.mjs && node --check scripts/verify-deployment.mjs && node --check scripts/verify-oauth.mjs",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
+    "build:cloudflare": "npm run check && npm test",
+    "deploy:cloudflare": "npm run db:remote && npm run deploy",
     "db:remote": "wrangler d1 migrations apply hybrid-cloud-fuzzer --remote",
     "db:local": "wrangler d1 migrations apply hybrid-cloud-fuzzer --local",
     "capture": "node local/capture.mjs",
