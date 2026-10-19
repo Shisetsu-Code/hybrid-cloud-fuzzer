@@ -122,3 +122,31 @@ export async function decisionsFeed(env,{runId=null,after=0,limit=50}={}){
     sourceSha256:r.source_sha256,revision:r.revision,decisions:fromJSON(r.decisions_json,{})}));
   return {items,nextAfter:items.length?items.at(-1).seq:after};
 }
+
+// Read-only audit of persisted decisions; includes original candidate paths and
+// rectangles so reviewers can detect errors without exporting D1 to a local file.
+export async function auditClassifications(env,{runId=null,provider=null,status='classified',afterId='',limit=20,includeCandidates=true}={}){
+  const id=/^[a-z0-9][a-z0-9_.-]{0,99}$/i;
+  if(runId!=null&&(typeof runId!=='string'||!id.test(runId)))throw new InputError('invalid runId');
+  if(provider!=null&&(typeof provider!=='string'||!id.test(provider)))throw new InputError('invalid provider');
+  if(!['classified','needs_review'].includes(status))throw new InputError('invalid audit status');
+  if(typeof afterId!=='string'||afterId.length>400)throw new InputError('invalid audit cursor');
+  if(!Number.isSafeInteger(limit)||limit<1||limit>50)throw new InputError('audit limit must be 1..50');
+  if(typeof includeCandidates!=='boolean')throw new InputError('includeCandidates must be boolean');
+  const where=['status=?','id>?'],values=[status,afterId];
+  if(runId){where.push('run_id=?');values.push(runId);}
+  if(provider){where.push('provider=?');values.push(provider);}
+  const rows=await env.DB.prepare(`SELECT id,run_id,provider,game_id,shot_id,state,mode,adapter,revision,source_sha256,
+    image_key,width,height,status,reviewer,reviewed_at,candidates_json,decisions_json
+    FROM items WHERE ${where.join(' AND ')} ORDER BY id ASC LIMIT ?`).bind(...values,limit+1).all();
+  const result=rows.results||[],hasMore=result.length>limit;
+  const items=result.slice(0,limit).map(row=>({
+    id:row.id,runId:row.run_id,provider:row.provider,gameId:row.game_id,shotId:row.shot_id,
+    state:row.state,mode:row.mode,adapter:row.adapter,status:row.status,revision:row.revision,
+    sourceSha256:row.source_sha256,hasImage:Boolean(row.image_key),width:row.width,height:row.height,
+    reviewer:row.reviewer,reviewedAt:row.reviewed_at,
+    ...(includeCandidates?{candidates:fromJSON(row.candidates_json,[])}:{}),
+    decisions:fromJSON(row.decisions_json,null)
+  }));
+  return {items,hasMore,nextAfterId:hasMore?items.at(-1).id:null};
+}

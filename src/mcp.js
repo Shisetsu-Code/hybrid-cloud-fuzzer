@@ -1,5 +1,5 @@
 // Stateless MCP over HTTP. No custom app/plugin installation needed for HTTP-capable clients.
-import {InputError,claim,save,release,rawItem,publicItem,stats} from './core.js';
+import {InputError,claim,save,release,rawItem,publicItem,stats,auditClassifications} from './core.js';
 const text=v=>({type:'text',text:JSON.stringify(v)});
 const str={type:'string'};
 const schema=(props,required=[])=>({type:'object',properties:props,required,additionalProperties:false});
@@ -13,7 +13,9 @@ export const definitions=[
   {name:'save_and_next',description:'Save all decisions atomically and immediately claim the next item in the same MCP call; returns JPEG only for visual/hybrid modes.',inputSchema:schema({...saveFields,runId:str,provider:str,leaseSeconds:{type:'integer',minimum:30,maximum:900}},saveRequired)},
   {name:'get_item',description:'Reload an actively leased task. Use includeImage=true to load a backup JPEG for an otherwise structured task.',inputSchema:schema({id:str,leaseId:str,includeImage:{type:'boolean'}},['id','leaseId'])},
   {name:'release_item',description:'Return leased item to the pending queue.',inputSchema:schema({id:str,leaseId:str,revision:{type:'integer'}},['id','leaseId','revision'])},
-  {name:'queue_stats',description:'Fast count of pending/leased/classified/needs_review.',inputSchema:schema({runId:str,provider:str})}
+  {name:'queue_stats',description:'Fast count of pending/leased/classified/needs_review.',inputSchema:schema({runId:str,provider:str})},
+  {name:'audit_classifications',description:'READ-ONLY: list past classifications with original candidate paths, coordinates and decisions. Paginate with nextAfterId. Does not claim tasks or change D1.',inputSchema:schema({runId:str,provider:str,status:{enum:['classified','needs_review']},afterId:str,limit:{type:'integer',minimum:1,maximum:50},includeCandidates:{type:'boolean'}})},
+  {name:'audit_item',description:'READ-ONLY: inspect one previously classified item, optionally loading its R2 JPEG for visual verification. No lease needed.',inputSchema:schema({id:str,includeImage:{type:'boolean'}},['id'])}
 ];
 export function compact(item){
   if(!item)return item;
@@ -52,6 +54,13 @@ async function tool(env,name,arg){
     case 'save_classification':return {content:[text({saved:true,item:compact(await save(env,arg))})]};
     case 'release_item':return {content:[text({released:true,item:await release(env,arg)})]};
     case 'queue_stats':return {content:[text(await stats(env,arg))]};
+    case 'audit_classifications':return {content:[text(await auditClassifications(env,arg))]};
+    case 'audit_item':{
+      const row=await rawItem(env,arg.id);
+      if(!['classified','needs_review'].includes(row.status))throw new InputError('item has not been classified',409);
+      const picture=arg.includeImage===true?await loadImage(env,row):null;
+      return {content:[text({item:publicItem(row)}),...(picture?[picture]:[])]};
+    }
     case 'get_item':{
       const row=await rawItem(env,arg.id),now=Math.floor(Date.now()/1000);
       if(row.status!=='leased'||row.lease_id!==arg.leaseId||row.lease_until<=now)throw new InputError('lease not active',409);

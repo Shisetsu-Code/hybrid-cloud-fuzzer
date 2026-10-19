@@ -128,6 +128,50 @@ test('MCP structured task has no image payload, tools list is present and auth r
     const bad=await worker.fetch(new Request('https://worker.example/mcp',{method:'POST',headers:{Authorization:'Bearer review-test','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})}),f.env);
     assert.equal(bad.status,401);
     const list=await worker.fetch(new Request('https://worker.example/mcp',{method:'POST',headers:{Authorization:'Bearer mcp-test','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})}),f.env);
-    assert.equal((await list.json()).result.tools.length,6);
+    assert.equal((await list.json()).result.tools.length,8);
+  }finally{f.close()}
+});
+
+
+test('audit_classifications lists saved decisions with candidates, pagination and no mutations',async()=>{
+  const f=fixture();try{
+    for(const name of ['alpha','beta','gamma']){
+      await upload(f.env,item({gameId:name}),null);
+      const c=(await (await request(f.env,'/v1/claim',{provider:'pragmatic'})).json()).item;
+      const saved=await request(f.env,'/v1/save',{id:c.id,leaseId:c.leaseId,revision:c.revision,sourceSha256:c.sourceSha256,
+        reviewer:'other-chat',status:'classified',selections:[{candidateId:'c0',kind:'buy'}]});
+      assert.equal(saved.status,200);
+    }
+    const first=await rpc(f.env,'audit_classifications',{runId:'test-run',limit:2});
+    const page1=JSON.parse(first.result.content[0].text);
+    assert.equal(page1.items.length,2);assert.equal(page1.hasMore,true);
+    assert.equal(page1.items[0].candidates[0].path,'GameRoot/BuyFeature/Collider');
+    assert.equal(page1.items[0].decisions.allMarks[0].kind,'buy');
+    const second=await rpc(f.env,'audit_classifications',{runId:'test-run',limit:2,afterId:page1.nextAfterId});
+    const page2=JSON.parse(second.result.content[0].text);
+    assert.equal(page2.items.length,1);assert.equal(page2.hasMore,false);assert.equal(page2.nextAfterId,null);
+    const lite=await rpc(f.env,'audit_classifications',{includeCandidates:false,limit:1});
+    assert.equal(Object.hasOwn(JSON.parse(lite.result.content[0].text).items[0],'candidates'),false);
+    const bad=await rpc(f.env,'audit_classifications',{limit:100});
+    assert.equal(bad.result.isError,true);
+    const counts=(await (await get(f.env,'/v1/stats')).json()).counts;
+    assert.deepEqual(counts,{pending:0,leased:0,classified:3,needs_review:0});
+  }finally{f.close()}
+});
+
+test('audit_item reads a classified R2 image without lease, rejects pending and wrong auth',async()=>{
+  const f=fixture();try{
+    const created=(await (await upload(f.env,imageItem())).json()).item;
+    const before=await rpc(f.env,'audit_item',{id:created.id,includeImage:true});
+    assert.equal(before.result.isError,true);
+    const c=(await (await request(f.env,'/v1/claim',{})).json()).item;
+    await request(f.env,'/v1/save',{id:c.id,leaseId:c.leaseId,revision:c.revision,sourceSha256:c.sourceSha256,
+      reviewer:'gpt',status:'classified',marks:[{x:0.4,y:0.6,kind:'navigate',label:'intro'}]});
+    const audited=await rpc(f.env,'audit_item',{id:created.id,includeImage:true});
+    assert.equal(audited.result.content.length,2);
+    assert.equal(JSON.parse(audited.result.content[0].text).item.decisions.marks[0].x,0.4);
+    assert.deepEqual(new Uint8Array(Buffer.from(audited.result.content[1].data,'base64')),JPEG);
+    const response=await worker.fetch(new Request('https://worker.example/mcp',{method:'POST',headers:{Authorization:'Bearer ingest-test','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/call',params:{name:'audit_item',arguments:{id:created.id}}})}),f.env);
+    assert.equal(response.status,401);
   }finally{f.close()}
 });
