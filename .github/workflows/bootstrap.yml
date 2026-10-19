@@ -22,6 +22,8 @@ jobs:
         run: |
           tar -tzf archive/hybrid-release.tar.gz | head -35
           tar -xzf archive/hybrid-release.tar.gz -C .
+          mkdir -p docs
+          mv .github/workflows/ci.yml docs/ci-template.yml
           npm install --ignore-scripts
           npm run check
           npm test
