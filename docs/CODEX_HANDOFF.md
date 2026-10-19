@@ -7,8 +7,8 @@ MCP nuevo, las pruebas y las migraciones ya están en este repositorio.
 ## Tarea
 
 1. Hacer `git clone` o `git pull --ff-only` de `main`.
-2. `npm ci && npm run check && npm test`. Requiere todas las pruebas en verde
-   (**35/35**, incluidas las pruebas de OAuth).
+2. `npm ci && npm run check && npm test`. Requiere todas las pruebas en verde,
+   incluidas las pruebas de OAuth y del recopilador.
 3. En la cuenta Cloudflare que autorice el usuario, ejecutar `npx wrangler whoami`,
    `npx wrangler r2 bucket list` y `npx wrangler d1 list`. Crear **solo si faltan**:
    - R2 `hybrid-fuzzer-images`

@@ -6,14 +6,14 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {cli,safeId,safeHttps,readJSON,writeAtomic,RateLimiter,withLock} from './utils.js';
 import {bestFrame,screenshotBox} from './select-frame.js';
-import {dismissKnownIntro} from './intro.js';
+import {dismissKnownIntro,openPublicDemo} from './intro.js';
 const args=cli(process.argv.slice(2));
 const base=path.resolve(args.out||'outbox');
 const listPath=path.resolve(args.manifest||'examples/demos.json');
 const limiter=new RateLimiter(path.join(base,'.throttle.json'),{maxPerMinute:Number(args.rate||3)});
 const limit=args.limit?Number(args.limit):Infinity;
 if(!Number.isInteger(limit)&&limit!==Infinity||limit<0)throw Error('invalid --limit');
-if(args.help){console.log('node local/capture.mjs --manifest=examples/demos.json --out=outbox --rate=3 --limit=5 --headless (default headless)');process.exit(0);}
+if(args.help){console.log('node local/capture.mjs --manifest=examples/demos.json --out=outbox --rate=3 --limit=5 --confirm-adult --headless (default headless; confirm-adult only after operator age confirmation)');process.exit(0);}
 const catalog=JSON.parse(await fs.readFile(listPath,'utf8'));safeId(catalog.runId,'runId');
 if(!Array.isArray(catalog.games))throw Error('catalog.games required');
 const live=catalog.games.filter(g=>g.enabled!==false);
@@ -41,6 +41,7 @@ async function run(){
         context=await browser.newContext({viewport:{width:1280,height:720},serviceWorkers:'block'});
         const page=await context.newPage();page.setDefaultNavigationTimeout(40000);
         await page.goto(url,{waitUntil:'domcontentloaded'});
+        await openPublicDemo(page,{provider,url,confirmAdult:args['confirm-adult']===true});
         await page.waitForTimeout(Math.min(Number(args['wait-ms']||6500),25000));
         let inspected=await bestFrame(page,provider,{forceImage:!!args['always-image']});
         // Explicit wait and re-check if a later intro/overlay appears.
@@ -51,6 +52,9 @@ async function run(){
           const intro=await dismissKnownIntro(page,inspected,{inspect:()=>bestFrame(page,provider,{forceImage:!!args['always-image']})});
           inspected=intro.selected;
         }
+        // The CMP can appear after the game finishes loading. On an attached
+        // demo this only rejects catalogue cookies; it never relaunches a game.
+        await openPublicDemo(page,{provider,url,confirmAdult:args['confirm-adult']===true});
         const {clip,aligned}=await screenshotBox(page,inspected.frame);
         const image=await page.screenshot({type:'jpeg',quality:imageQuality,...(clip?{clip}:{})});
         const width=Math.round(clip?.width||page.viewportSize().width),height=Math.round(clip?.height||page.viewportSize().height);
