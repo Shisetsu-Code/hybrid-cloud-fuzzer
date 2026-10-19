@@ -14,6 +14,8 @@ function Read-CollectorRecord {
     return $record
 }
 function Save-CollectorRecord([hashtable]$Record) {
+    # A new checkout has no .local-state directory (it is intentionally gitignored).
+    $null = New-Item -ItemType Directory -Force -Path (Split-Path -Parent $script:stateFile)
     $temporary = $script:stateFile + '.' + $PID + '.tmp'
     $Record | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -LiteralPath $temporary
     Move-Item -LiteralPath $temporary -Destination $script:stateFile -Force
@@ -34,12 +36,27 @@ function Get-CollectorStatus {
     $capture = Get-ManagedWorker -Role Capture -Record $record
     $sync = Get-ManagedWorker -Role Sync -Record $record
     $branches = Get-ManagedWorker -Role Branches -Record $record
-    return [PSCustomObject]@{captureRunning=[bool]$capture;syncRunning=[bool]$sync;branchesRunning=[bool]$branches;branchesPid=$(if($branches){$branches.ProcessId}else{$null});capturePid=$(if($capture){$capture.ProcessId}else{$null});syncPid=$(if($sync){$sync.ProcessId}else{$null})}
+    $configPresent = Test-Path -LiteralPath $script:settingsFile -PathType Leaf
+    $secretsPresent = Test-Path -LiteralPath (Join-Path $script:repo '.wrangler/deployment-secrets.xml') -PathType Leaf
+    return [PSCustomObject]@{captureRunning=[bool]$capture;syncRunning=[bool]$sync;branchesRunning=[bool]$branches;branchesPid=$(if($branches){$branches.ProcessId}else{$null});capturePid=$(if($capture){$capture.ProcessId}else{$null});syncPid=$(if($sync){$sync.ProcessId}else{$null});configPresent=[bool]$configPresent;secretsPresent=[bool]$secretsPresent}
 }
 function Start-Collector {
+    if (-not (Test-Path -LiteralPath $script:settingsFile -PathType Leaf)) {
+        throw 'Falta la configuracion local. Ejecuta: powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\collector-setup.ps1 -RunId TU_RUN_ID'
+    }
     $config = Get-Content -Raw -LiteralPath $script:settingsFile | ConvertFrom-Json
-    if (-not (Test-Path -LiteralPath $config.manifest)) { throw 'No se encuentra el catalogo de juegos.' }
-    if (-not (Test-Path -LiteralPath (Join-Path $script:repo '.wrangler/deployment-secrets.xml'))) { throw 'No se encuentran las credenciales cifradas.' }
+    if (-not $config.manifest -or -not (Test-Path -LiteralPath $config.manifest -PathType Leaf)) { throw 'No se encuentra el catalogo de juegos configurado; comprueba .local-state/collector-control.json.' }
+    $manifest = Get-Content -Raw -LiteralPath $config.manifest | ConvertFrom-Json
+    if (-not $manifest.runId) { throw 'El manifiesto local no contiene runId.' }
+    $secretPath = Join-Path $script:repo '.wrangler/deployment-secrets.xml'
+    if (-not (Test-Path -LiteralPath $secretPath -PathType Leaf)) {
+        throw 'Faltan credenciales DPAPI locales (el git pull no las restaura). Si tienes los tokens existentes, ejecuta collector-setup.ps1 -ConfigureTokens; NO cambies los secretos del Worker.'
+    }
+    try {
+        $localSecrets = Import-Clixml -LiteralPath $secretPath
+        if (-not $localSecrets['INGEST_TOKEN'] -or -not $localSecrets['REVIEW_TOKEN']) { throw 'Claves de ingesta/revision ausentes' }
+    } catch { throw 'Las credenciales DPAPI locales no son legibles por este usuario; recupera los tokens existentes en lugar de rotarlos automaticamente.' }
+    Remove-Variable localSecrets
     $record = Read-CollectorRecord
     $hostPath = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
     foreach ($role in @('Sync','Branches','Capture')) {
