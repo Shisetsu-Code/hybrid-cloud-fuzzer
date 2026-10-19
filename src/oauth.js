@@ -3,7 +3,9 @@ import {AuthorizationError,CimdFetchError} from '@cloudflare/workers-oauth-provi
 const scopes=['mcp','offline_access'];
 const escape=value=>String(value).replace(/[&<>"']/g,char=>`&#${char.charCodeAt(0)};`);
 const headers={
- 'Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff',
+ // Native form POSTs serialize Origin as null under no-referrer. Keep the
+ // same-origin Origin while suppressing referrers to the OAuth callback host.
+ 'Cache-Control':'no-store','Referrer-Policy':'same-origin','X-Content-Type-Options':'nosniff',
  'X-Frame-Options':'DENY',
  'Content-Security-Policy':"default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'"
 };
@@ -37,6 +39,10 @@ export async function authorize(request,env){
    if(!authRequest.scope.includes('mcp')||authRequest.scope.some(s=>!scopes.includes(s)))return response('Permisos solicitados no admitidos.');
    const details=await oauth.describeConsent(authRequest),consent=await oauth.beginConsent(authRequest);
    for(const [name,value] of Object.entries(headers))consent.headers.set(name,value);
+   // Chromium applies form-action to redirects too. The provider has already
+   // validated this exact registered redirect URI; permit only its origin.
+   const callbackOrigin=new URL(authRequest.redirectUri).origin;
+   consent.headers.set('Content-Security-Policy',headers['Content-Security-Policy'].replace("form-action 'self'",`form-action 'self' ${callbackOrigin}`));
    consent.headers.set('Content-Type','text/html; charset=utf-8');
    return new Response(page(details,consent.handle),{headers:consent.headers});
   }
