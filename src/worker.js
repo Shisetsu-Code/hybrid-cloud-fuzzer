@@ -37,7 +37,17 @@ export default {
     try{
       const url=new URL(request.url),p=url.pathname;
       if(request.method==='GET'&&p==='/health'){
-        try{if(!env.DB||!env.IMAGES)throw Error('bindings absent');const schema=await env.DB.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name IN ('items','decision_history','action_traces')").first();
+        try{if(!env.DB||!env.IMAGES)throw Error('bindings absent');let schema=await env.DB.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name IN ('items','decision_history','action_traces')").first();
+          // Recover from a Worker publish that preceded the additive D1 migration.
+          // Compatible with migrations/0002_action_traces.sql; no existing rows are altered.
+          if(Number(schema?.count)===2){
+            const base=await env.DB.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name IN ('items','decision_history')").first();
+            if(Number(base?.count)===2){
+              await env.DB.prepare("CREATE TABLE IF NOT EXISTS action_traces (trace_id TEXT PRIMARY KEY,parent_item_id TEXT NOT NULL REFERENCES items(id),child_item_id TEXT NOT NULL REFERENCES items(id),parent_source_sha256 TEXT NOT NULL,parent_revision INTEGER NOT NULL,storage_key TEXT NOT NULL,content_sha256 TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT (datetime('now')))").run();
+              await env.DB.prepare('CREATE INDEX IF NOT EXISTS idx_action_traces_parent ON action_traces(parent_item_id)').run();
+              schema=await env.DB.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name IN ('items','decision_history','action_traces')").first();
+            }
+          }
           if(Number(schema?.count)!==3)throw Error('D1 migration missing');
           return json({ok:true,service:'hybrid-cloud-fuzzer',schemaVersion:2,storage:'R2',database:'D1',mcp:'/mcp'});}
         catch{return json({ok:false,error:'D1/R2 not ready'},503);}
