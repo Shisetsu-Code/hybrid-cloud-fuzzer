@@ -5,7 +5,7 @@ import {DatabaseSync} from 'node:sqlite';
 import {inferMode} from '../src/candidates.js';
 import worker from '../src/worker.js';
 
-const migration=fs.readFileSync(new URL('../migrations/0001_init.sql',import.meta.url),'utf8');
+const migration=fs.readFileSync(new URL('../migrations/0001_init.sql',import.meta.url),'utf8')+'\n'+fs.readFileSync(new URL('../migrations/0002_action_traces.sql',import.meta.url),'utf8');
 const image=new Uint8Array([255,216,1,2,3,255,217]);
 function fixture(){
   const db=new DatabaseSync(':memory:');db.exec(migration);

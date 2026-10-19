@@ -4,7 +4,7 @@ import {verify} from '../scripts/verify-deployment.mjs';
 
 const names=['next_item','save_classification','save_and_next','get_item','release_item','queue_stats'];
 function mock(url,opts={}){
-  if(url.endsWith('/health'))return new Response(JSON.stringify({ok:true,schemaVersion:1,service:'hybrid-cloud-fuzzer'}));
+  if(url.endsWith('/health'))return new Response(JSON.stringify({ok:true,schemaVersion:2,service:'hybrid-cloud-fuzzer'}));
   if(url.endsWith('/v1/stats')){assert.equal(opts.headers.Authorization,'Bearer review-secret');return new Response(JSON.stringify({counts:{pending:3,leased:0,classified:1,needs_review:0},total:4}));}
   if(url.endsWith('/mcp')){
     assert.equal(opts.headers.Authorization,'Bearer mcp-secret');

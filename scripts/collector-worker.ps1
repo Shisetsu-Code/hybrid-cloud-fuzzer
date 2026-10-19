@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][ValidateSet('Capture','Sync')][string]$Role)
+param([Parameter(Mandatory=$true)][ValidateSet('Capture','Sync','Branches')][string]$Role)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 Set-Location -LiteralPath $repo
@@ -7,6 +7,17 @@ $node = (Get-Command node.exe -ErrorAction Stop).Source
 if ($Role -eq 'Capture') {
     $env:PLAYWRIGHT_BROWSERS_PATH = $config.browserPath
     $arguments = @((Join-Path $repo 'local/capture.mjs'), "--manifest=$($config.manifest)", "--out=$($config.outbox)", "--rate=$($config.rate)", "--wait-ms=$($config.waitMs)", "--har=$($config.har)", "--speed=$($config.speed)")
+    if ($config.adultConfirmed -eq $true) { $arguments += '--confirm-adult' }
+    & $node @arguments
+} elseif ($Role -eq 'Branches') {
+    $secrets = Import-Clixml -LiteralPath (Join-Path $repo '.wrangler/deployment-secrets.xml')
+    $env:HYBRID_FUZZER_URL = $config.workerUrl
+    $env:HYBRID_INGEST_TOKEN = [Net.NetworkCredential]::new('', $secrets['INGEST_TOKEN']).Password
+    $env:HYBRID_REVIEW_TOKEN = [Net.NetworkCredential]::new('', $secrets['REVIEW_TOKEN']).Password
+    if (-not $env:HYBRID_INGEST_TOKEN -or -not $env:HYBRID_REVIEW_TOKEN) { throw 'Faltan credenciales privadas de ingesta o revisión.' }
+    $env:PLAYWRIGHT_BROWSERS_PATH = $config.browserPath
+    Remove-Variable secrets
+    $arguments = @((Join-Path $repo 'local/round-runner.mjs'), "--manifest=$($config.manifest)", "--out=$($config.outbox)", '--watch', '--limit=5', '--interval-ms=15000', "--speed=$($config.speed)")
     if ($config.adultConfirmed -eq $true) { $arguments += '--confirm-adult' }
     & $node @arguments
 } else {

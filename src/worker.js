@@ -1,5 +1,6 @@
 import {InputError,ingest,claim,save,release,rawItem,publicItem,stats,decisionsFeed} from './core.js';
 import {handleMcp} from './mcp.js';
+import {recordTrace,retrieveTrace} from './traces.js';
 
 function eqSecret(a,b){
   if(typeof a!=='string'||typeof b!=='string'||!a||!b)return false;
@@ -36,13 +37,14 @@ export default {
     try{
       const url=new URL(request.url),p=url.pathname;
       if(request.method==='GET'&&p==='/health'){
-        try{if(!env.DB||!env.IMAGES)throw Error('bindings absent');const schema=await env.DB.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name IN ('items','decision_history')").first();
-          if(Number(schema?.count)!==2)throw Error('D1 migration missing');
-          return json({ok:true,service:'hybrid-cloud-fuzzer',schemaVersion:1,storage:'R2',database:'D1',mcp:'/mcp'});}
+        try{if(!env.DB||!env.IMAGES)throw Error('bindings absent');const schema=await env.DB.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type='table' AND name IN ('items','decision_history','action_traces')").first();
+          if(Number(schema?.count)!==3)throw Error('D1 migration missing');
+          return json({ok:true,service:'hybrid-cloud-fuzzer',schemaVersion:2,storage:'R2',database:'D1',mcp:'/mcp'});}
         catch{return json({ok:false,error:'D1/R2 not ready'},503);}
       }
       if(p==='/mcp')return authorized(request,env.MCP_TOKEN)?await handleMcp(request,env):reject();
       if(p==='/v1/items'&&request.method==='POST')return authorized(request,env.INGEST_TOKEN)?await upload(request,env):reject();
+      if(p==='/v1/traces'&&request.method==='POST')return authorized(request,env.INGEST_TOKEN)?json(await recordTrace(env,await readJSON(request)),201):reject();
       if(p==='/v1/items/batch'&&request.method==='POST'){
         if(!authorized(request,env.INGEST_TOKEN))return reject();
         const value=await readJSON(request);if(!Array.isArray(value.items)||!value.items.length||value.items.length>20)throw new InputError('1..20 items required');
@@ -55,6 +57,8 @@ export default {
         if(p==='/v1/save'&&request.method==='POST')return json({item:await save(env,await readJSON(request))});
         if(p==='/v1/release'&&request.method==='POST')return json({item:await release(env,await readJSON(request))});
         if(p==='/v1/stats'&&request.method==='GET')return json(await stats(env,{runId:url.searchParams.get('runId'),provider:url.searchParams.get('provider')}));
+        const traceMatch=/^\/v1\/traces\/([a-f0-9]{64})$/i.exec(p);
+        if(traceMatch&&request.method==='GET')return json(await retrieveTrace(env,traceMatch[1]));
         if(p==='/v1/decisions'&&request.method==='GET')return json(await decisionsFeed(env,{runId:url.searchParams.get('runId'),after:Number(url.searchParams.get('after')||0),limit:Number(url.searchParams.get('limit')||50)}));
         const match=/^\/v1\/items\/([^/]+)(\/image)?$/.exec(p);
         if(match&&request.method==='GET'){

@@ -18,7 +18,7 @@ function Save-CollectorRecord([hashtable]$Record) {
     $Record | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -LiteralPath $temporary
     Move-Item -LiteralPath $temporary -Destination $script:stateFile -Force
 }
-function Get-ManagedWorker([ValidateSet('Capture','Sync')][string]$Role,[hashtable]$Record) {
+function Get-ManagedWorker([ValidateSet('Capture','Sync','Branches')][string]$Role,[hashtable]$Record) {
     $key = $Role.ToLowerInvariant()
     $workerId = $Record[$key + 'Pid']
     $created = $Record[$key + 'StartedAt']
@@ -33,7 +33,8 @@ function Get-CollectorStatus {
     $record = Read-CollectorRecord
     $capture = Get-ManagedWorker -Role Capture -Record $record
     $sync = Get-ManagedWorker -Role Sync -Record $record
-    return [PSCustomObject]@{captureRunning=[bool]$capture;syncRunning=[bool]$sync;capturePid=$(if($capture){$capture.ProcessId}else{$null});syncPid=$(if($sync){$sync.ProcessId}else{$null})}
+    $branches = Get-ManagedWorker -Role Branches -Record $record
+    return [PSCustomObject]@{captureRunning=[bool]$capture;syncRunning=[bool]$sync;branchesRunning=[bool]$branches;branchesPid=$(if($branches){$branches.ProcessId}else{$null});capturePid=$(if($capture){$capture.ProcessId}else{$null});syncPid=$(if($sync){$sync.ProcessId}else{$null})}
 }
 function Start-Collector {
     $config = Get-Content -Raw -LiteralPath $script:settingsFile | ConvertFrom-Json
@@ -41,7 +42,7 @@ function Start-Collector {
     if (-not (Test-Path -LiteralPath (Join-Path $script:repo '.wrangler/deployment-secrets.xml'))) { throw 'No se encuentran las credenciales cifradas.' }
     $record = Read-CollectorRecord
     $hostPath = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
-    foreach ($role in @('Sync','Capture')) {
+    foreach ($role in @('Sync','Branches','Capture')) {
         if (Get-ManagedWorker -Role $role -Record $record) { continue }
         $key = $role.ToLowerInvariant()
         if ($record[$key+'Pid'] -and (Get-Process -Id ([int]$record[$key+'Pid']) -ErrorAction SilentlyContinue)) { throw 'Un PID guardado pertenece a otro proceso; no se modifico.' }
@@ -56,7 +57,7 @@ function Start-Collector {
 }
 function Stop-Collector {
     $record = Read-CollectorRecord
-    foreach ($role in @('Capture','Sync')) {
+    foreach ($role in @('Branches','Capture','Sync')) {
         $process = Get-ManagedWorker -Role $role -Record $record
         $key = $role.ToLowerInvariant()
         if ($process) {
@@ -88,10 +89,10 @@ function Show-CollectorMenu {
     Add-Type -AssemblyName System.Drawing
     [Windows.Forms.Application]::EnableVisualStyles()
     $form = New-Object Windows.Forms.Form
-    $form.Text = 'Recopilador Hybrid Fuzzer'; $form.ClientSize = New-Object Drawing.Size(470,230)
+    $form.Text = 'Recopilador Hybrid Fuzzer'; $form.ClientSize = New-Object Drawing.Size(470,250)
     $form.StartPosition = 'CenterScreen'; $form.FormBorderStyle = 'FixedDialog'; $form.MaximizeBox = $false
     $label = New-Object Windows.Forms.Label
-    $label.Location = New-Object Drawing.Point(24,22); $label.Size = New-Object Drawing.Size(420,52)
+    $label.Location = New-Object Drawing.Point(24,22); $label.Size = New-Object Drawing.Size(420,76)
     $label.Font = New-Object Drawing.Font('Segoe UI',12)
     $form.Controls.Add($label)
     $note = New-Object Windows.Forms.Label
@@ -104,9 +105,9 @@ function Show-CollectorMenu {
     $form.Controls.AddRange(@($start,$stop,$close))
     $refresh = {
         try { $status = Get-CollectorStatus
-            $label.Text = 'Captura: ' + $(if($status.captureRunning){'en marcha'}else{'detenida'}) + "`r`n" + 'Sincronizacion: ' + $(if($status.syncRunning){'en marcha'}else{'detenida'})
-            $start.Enabled = -not ($status.captureRunning -and $status.syncRunning)
-            $stop.Enabled = $status.captureRunning -or $status.syncRunning
+            $label.Text = 'Captura: ' + $(if($status.captureRunning){'en marcha'}else{'detenida'}) + "`r`n" + 'Sincronizacion: ' + $(if($status.syncRunning){'en marcha'}else{'detenida'}) + "`r`n" + 'Ramas: ' + $(if($status.branchesRunning){'en marcha'}else{'detenida'})
+            $start.Enabled = -not ($status.captureRunning -and $status.syncRunning -and $status.branchesRunning)
+            $stop.Enabled = $status.captureRunning -or $status.syncRunning -or $status.branchesRunning
         } catch { $label.Text = 'Error al consultar el estado.' }
     }
     $start.Add_Click({ try { Invoke-CollectorAction 'Start'; & $refresh } catch { [Windows.Forms.MessageBox]::Show($_.Exception.Message,'Recopilador') | Out-Null } })
