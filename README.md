@@ -96,6 +96,12 @@ Edit `examples/demos.json` with publicly accessible DEMO URLs, using the actual 
 node .\local\capture.mjs --manifest=examples/demos.json --out=outbox --rate=3 --limit=5
 ```
 
+For Pragmatic catalogue URLs the collector rejects catalogue cookies, opens
+**Play Demo**, and waits for the game iframe before capturing. If the site asks
+for age confirmation, use `--confirm-adult` only after the operator explicitly
+confirms they are 18 or older. A missing game iframe fails the capture instead
+of uploading the promotional page. Redirects to another page are rejected.
+
 Uses **one shared Chromium process**, one game at a time, never more than 3 new page navigations per minute. It only dismisses a **single verified known Pragmatic INTRO button** (disable with `--no-skip-intro`); never purchases or spins. Unknown provider intro/UI stays on image fallback. Playwright `npx playwright install chromium` is needed the first time. The system can resume from previously generated outbox records. Run the sync command in another shell.
 
 For providers that expose no usable runtime or DOM controls, it still queues a JPEG. Extractor improvement can happen later without changing the user-visible workflow.
