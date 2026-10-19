@@ -108,6 +108,21 @@ For providers that expose no usable runtime or DOM controls, it still queues a J
 
 ## 3. MCP classification — two calls per item
 
+### Windows collector control
+
+On the configured Windows operator PC, the desktop shortcut **Recopilador
+Hybrid Fuzzer** opens a panel with **Iniciar**, **Detener** and current status.
+Start resumes capture and upload without repeating completed outbox items.
+Stop closes both workers and their Chromium processes; completed captures and
+upload acknowledgements remain on disk. An interrupted game is retried on resume.
+Closing the panel leaves collection running.
+
+The panel uses `scripts/collector-control.ps1`; its worker uses
+`.local-state/collector-control.json` and the existing Windows-DPAPI-encrypted
+`.wrangler/deployment-secrets.xml`. These machine-specific files stay out of Git.
+Command-line control is also available with `-Action Start`, `Stop` or `Status`.
+Only verified worker processes from this checkout are controlled.
+
 Configure **remote MCP** at `https://hybrid-cloud-fuzzer.YOUR_ACCOUNT.workers.dev/mcp` with bearer `MCP_TOKEN`. Or, for clients requiring stdio, run `node mcp/stdio.mjs` with `HYBRID_FUZZER_URL` and `HYBRID_MCP_TOKEN` environment variables.
 
 Tools: `next_item`, `save_classification`, **`save_and_next`**, `get_item`, `release_item`, `queue_stats`. For exact commands see [docs/MCP_QUICKSTART.md](docs/MCP_QUICKSTART.md).
