@@ -1,5 +1,7 @@
 name: CI
 on: [push, pull_request]
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -13,4 +15,15 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: npm install --ignore-scripts
       - run: npm run check
+      - name: Check every JavaScript module
+        run: find src local mcp scripts -type f \( -name '*.js' -o -name '*.mjs' \) -exec node --check {} \;
       - run: npm test
+      - name: Snapshot tested source
+        if: always() && matrix.node == '22'
+        run: git archive --format=tar.gz HEAD > /tmp/hybrid-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        if: always() && matrix.node == '22'
+        with:
+          name: tested-source
+          path: /tmp/hybrid-source.tar.gz
+          retention-days: 3
