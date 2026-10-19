@@ -7,7 +7,8 @@ MCP nuevo, las pruebas y las migraciones ya están en este repositorio.
 ## Tarea
 
 1. Hacer `git clone` o `git pull --ff-only` de `main`.
-2. `npm ci && npm run check && npm test`. Requiere **28/28 pruebas**.
+2. `npm ci && npm run check && npm test`. Requiere todas las pruebas en verde
+   (**35/35**, incluidas las pruebas de OAuth).
 3. En la cuenta Cloudflare que autorice el usuario, ejecutar `npx wrangler whoami`,
    `npx wrangler r2 bucket list` y `npx wrangler d1 list`. Crear **solo si faltan**:
    - R2 `hybrid-fuzzer-images`
@@ -24,6 +25,29 @@ MCP nuevo, las pruebas y las migraciones ya están en este repositorio.
    `next_item`, `save_classification`, `save_and_next`, `get_item`, `release_item`, `queue_stats`.
 8. Conectar el **nuevo** MCP (HTTP `/mcp` o `node mcp/stdio.mjs`) solo después de
    comprobar su funcionamiento. Guiarse por `docs/MCP_QUICKSTART.md`.
+
+## Despliegue continuo desde GitHub
+
+El Worker `hybrid-cloud-fuzzer` se conecta al repositorio
+`Shisetsu-Code/hybrid-cloud-fuzzer` mediante Cloudflare Workers Builds.
+Configuración de producción:
+
+- Rama: `main`; no publicar otras ramas en producción.
+- Directorio raíz: `/`.
+- Build command: `npm run build:cloudflare` (check y suite completa).
+- Deploy command: `npm run deploy:cloudflare` (migraciones D1 y despliegue).
+- Node.js: 24, declarado en `.node-version`.
+
+Cada push a `main` debe superar las comprobaciones antes de publicar. Las
+migraciones de `migrations/` se aplican a la D1 enlazada en `wrangler.toml`.
+Agregar migraciones compatibles con la versión del Worker que está en servicio:
+la base se actualiza antes del código y un rollback del Worker no revierte datos.
+Los secretos de runtime permanecen en el Worker y no se copian al repositorio.
+
+La configuración del enlace GitHub, los comandos y el historial de builds se
+administran en **Worker > Settings > Builds**. Después de modificar el enlace,
+confirmar una build exitosa con el SHA de `main` y volver a verificar `/health`
+y el MCP. No afirmar que la integración está activa solo por agregar scripts.
 
 ## Compatibilidad
 
@@ -44,6 +68,6 @@ juegos, tiradas ni compras reales durante despliegue o verificación.
 
 ## Respuesta final de Codex
 
-Informar solamente: SHA de `main`, estado CI, resultado de 28 tests, URL real del
+Informar solamente: SHA de `main`, estado CI, resultado de tests, URL real del
 Worker, estado R2/D1, health y MCP; bloqueos concretos si existen.
 No afirmar despliegue sin una versión confirmada por Wrangler.
