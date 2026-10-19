@@ -21,7 +21,7 @@ jobs:
       - name: Install Chromium for action-path integration test
         if: matrix.node == '22'
         run: npx playwright install --with-deps chromium
-      - name: Browser fixture: reviewed click to sanitized protocol request
+      - name: "Browser fixture: reviewed click to sanitized protocol request"
         if: matrix.node == '22'
         env:
           INTEGRATION_BROWSER: '1'
