@@ -5,8 +5,8 @@ import fs from 'node:fs';
 import worker from '../src/worker.js';
 import {inferMode,normalizeCandidates,validateItem,normalizeDecisions} from '../src/candidates.js';
 const migration=fs.readFileSync(new URL('../migrations/0001_init.sql',import.meta.url),'utf8');
-function fixture(){
-  const sqlite=new DatabaseSync(':memory:');sqlite.exec(migration);sqlite.exec(fs.readFileSync(new URL('../migrations/0002_action_traces.sql',import.meta.url),'utf8'));
+function fixture({withoutTraces=false}={}){
+  const sqlite=new DatabaseSync(':memory:');sqlite.exec(migration);if(!withoutTraces)sqlite.exec(fs.readFileSync(new URL('../migrations/0002_action_traces.sql',import.meta.url),'utf8'));
   const DB={prepare(sql){const stmt=sqlite.prepare(sql);const bound=args=>({query:sql,args,first:async()=>stmt.get(...args)||null,run:async()=>({meta:stmt.run(...args)}),all:async()=>({results:stmt.all(...args)})});return {...bound([]),bind:(...args)=>bound(args)}},async batch(statements){sqlite.exec('BEGIN IMMEDIATE');try{const results=statements.map(({query,args})=>({meta:sqlite.prepare(query).run(...args)}));sqlite.exec('COMMIT');return results;}catch(e){sqlite.exec('ROLLBACK');throw e;}}};
   const images=new Map(),IMAGES={put:async(key,data)=>{images.set(key,data instanceof ArrayBuffer?data.slice(0):data);},get:async key=>images.has(key)?{
     arrayBuffer:async()=>typeof images.get(key)==='string'?new TextEncoder().encode(images.get(key)).buffer:images.get(key).slice(0),body:new Blob([images.get(key)]).stream(),text:async()=>String(images.get(key))}:null};
@@ -194,4 +194,19 @@ test('sanitized action evidence is private, idempotent, source revision checked,
   assert.equal((await response.json()).trace.log.entries[0].request.postData.text,'action=doSpin&bet=2');
   const changed=await request(f.env,'/v1/traces',{...data,parentSourceSha256:'b'.repeat(64),traceId:'b'.repeat(64)},'ingest-test');assert.equal(changed.status,409);
  }finally{f.close();}
+});
+
+
+test('health restores only the missing additive trace table without disturbing classified items',async()=>{
+  const f=fixture({withoutTraces:true});try{
+    const before=await f.env.DB.prepare('SELECT COUNT(*) AS count FROM sqlite_master WHERE name=?').bind('action_traces').first();
+    assert.equal(before.count,0);
+    const response=await get(f.env,'/health');
+    assert.equal(response.status,200);
+    assert.equal((await response.json()).schemaVersion,2);
+    const after=await f.env.DB.prepare('SELECT COUNT(*) AS count FROM sqlite_master WHERE name=?').bind('action_traces').first();
+    assert.equal(after.count,1);
+    assert.equal((await get(f.env,'/health')).status,200);
+    assert.equal((await get(f.env,'/v1/stats')).status,200);
+  }finally{f.close()}
 });
