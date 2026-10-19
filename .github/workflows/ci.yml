@@ -18,6 +18,14 @@ jobs:
       - name: Check every JavaScript module
         run: find src local mcp scripts -type f \( -name '*.js' -o -name '*.mjs' \) -exec node --check {} \;
       - run: npm test
+      - name: Install Chromium for action-path integration test
+        if: matrix.node == '22'
+        run: npx playwright install --with-deps chromium
+      - name: Browser fixture: reviewed click to sanitized protocol request
+        if: matrix.node == '22'
+        env:
+          INTEGRATION_BROWSER: '1'
+        run: node --test test/browser-fixture.test.js
       - name: Snapshot tested source
         if: always() && matrix.node == '22'
         run: git archive --format=tar.gz HEAD > /tmp/hybrid-source.tar.gz
