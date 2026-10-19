@@ -17,7 +17,8 @@ function Save-CollectorRecord([hashtable]$Record) {
     # A new checkout has no .local-state directory (it is intentionally gitignored).
     $null = New-Item -ItemType Directory -Force -Path (Split-Path -Parent $script:stateFile)
     $temporary = $script:stateFile + '.' + $PID + '.tmp'
-    $Record | ConvertTo-Json -Depth 5 | Set-Content -Encoding UTF8 -LiteralPath $temporary
+    $json = $Record | ConvertTo-Json -Depth 5
+    [IO.File]::WriteAllText($temporary,$json,(New-Object System.Text.UTF8Encoding($false)))
     Move-Item -LiteralPath $temporary -Destination $script:stateFile -Force
 }
 function Get-ManagedWorker([ValidateSet('Capture','Sync','Branches')][string]$Role,[hashtable]$Record) {
