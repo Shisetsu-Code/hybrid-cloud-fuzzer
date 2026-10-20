@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {safeHttps,writeAtomic,readJSON} from './utils.js';
+import {isCatalogueOverlayAction} from './intro.js';
 
 const digest=v=>createHash('sha256').update(String(v)).digest('hex');
 const validAction=new Set(['buy','navigate','pick','other']);
@@ -28,6 +29,7 @@ export function collectTasks(items,known=new Set(),{maxDepth=7,maxTasks=2000,all
  const tasks=[];for(const item of items){
   if(item?.status!=='classified'||item.metadata?.terminal===true)continue;
   const prev=item.metadata?.actionPath||[];
+  if(prev.some(isCatalogueOverlayAction))continue;
   if(prev.length>=maxDepth)continue;
   for(let i=0;i<(item.decisions?.allMarks||[]).length;i++){
    let task;try{task=makeTask(item,i);}catch{continue;}
@@ -35,7 +37,7 @@ export function collectTasks(items,known=new Set(),{maxDepth=7,maxTasks=2000,all
    if(/AutoPlay|Settings|Gear|SoundToggle|HelpButton|MenuButton/i.test(label))continue;
    // Catalogue-level cookies and age dialogs are handled by Playwright,
    // not classified as branches to replay inside the game iframe.
-   if(/reject\s+all|rechazar\s+todo|cookies?|consent\s+overlay|privacy\s+(?:notice|dialog)|age\s+gate/i.test(label))continue;
+   if(isCatalogueOverlayAction(last))continue;
    if(!allowNormalSpin&&last.state==='BASE'&&/(?:Spin[_/-]?Normal|Normal[_/-]?Spin|AutoSpin|SpinButton)/i.test(label))continue;
    if(prev.some(a=>keyOfAction(a)===keyOfAction(last)))continue;
    if(known.has(task.id))continue;

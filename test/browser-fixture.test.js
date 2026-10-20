@@ -1,6 +1,37 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {executeDemoBranch} from '../local/branch-executor.js';
+import {dismissCatalogueOverlays,captureWithoutCatalogueOverlays} from '../local/intro.js';
+
+test('recurring consent is cleared in every fresh Chromium context and after screenshot races',
+ {skip:process.env.INTEGRATION_BROWSER!=='1'},async()=>{
+ const {chromium}=await import('playwright');
+ const browser=await chromium.launch({headless:true});
+ const url='https://www.pragmaticplay.fun/en/slots/alpha/';
+ const html=`<body><button id="reject">Reject All</button><script>
+ window.rejects=0;document.querySelector('button').onclick=()=>{
+ window.rejects++;document.querySelector('button').style.display='none';
+ if(window.rejects<3)setTimeout(()=>document.querySelector('button').style.display='block',30);
+ };</script>`;
+ try{
+  for(let n=0;n<2;n++){
+   const context=await browser.newContext();
+   try{
+    await context.route(url,r=>r.fulfill({status:200,contentType:'text/html',body:html}));
+    const page=await context.newPage();await page.goto(url);
+    const result=await dismissCatalogueOverlays(page,{provider:'pragmatic',url,requireClear:true});
+    assert.equal(result.cookiesDismissed,3);
+    let attempts=0;
+    const snapshot=await captureWithoutCatalogueOverlays(page,{provider:'pragmatic',url},async()=>{
+     attempts++;if(attempts===1)await page.evaluate(()=>document.querySelector('button').style.display='block');
+     const covered=await page.getByRole('button',{name:'Reject All'}).isVisible();
+     await page.screenshot({type:'jpeg'});return {covered};
+    });
+    assert.equal(snapshot.covered,false);assert.equal(attempts,2);
+   }finally{await context.close();}
+  }
+ }finally{await browser.close();}
+});
 
 // A local, deterministic demo fixture exercises Chromium, iframe-independent hitboxes,
 // action-correlated POST capture, child screenshot, and terminal wager detection.

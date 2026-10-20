@@ -6,7 +6,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {cli,safeId,safeHttps,readJSON,writeAtomic,RateLimiter,withLock} from './utils.js';
 import {bestFrame,screenshotBox} from './select-frame.js';
-import {dismissKnownIntro,openPublicDemo,dismissCatalogueOverlays} from './intro.js';
+import {dismissKnownIntro,openPublicDemo,dismissCatalogueOverlays,captureWithoutCatalogueOverlays} from './intro.js';
 import {createNetworkRecorder,shouldSaveHar,saveSanitizedHar,validateHarMode} from './har.js';
 import {validateSpeed,speedUpGame} from './speed.js';
 import {updateDrainRequested} from './update-drain.js';
@@ -57,6 +57,7 @@ async function run(){
         inspected=await bestFrame(page,provider,{forceImage:!!args['always-image']});
         if(!inspected)throw Error('no page frame');
         if(speed>1)await speedUpGame(page,inspected.frame,speed);
+        await dismissCatalogueOverlays(page,{provider,url,confirmAdult:args['confirm-adult']===true,requireClear:true});
         if(provider==='pragmatic'&&inspected.data.state==='INTRO'&&!args['no-skip-intro']){
           const intro=await dismissKnownIntro(page,inspected,{inspect:()=>bestFrame(page,provider,{forceImage:!!args['always-image']})});
           inspected=intro.selected;
@@ -66,9 +67,13 @@ async function run(){
         // demo this only rejects catalogue cookies; it never relaunches a game.
         await openPublicDemo(page,{provider,url,confirmAdult:args['confirm-adult']===true});
         // A delayed catalogue CMP can cover the screenshot even when the iframe is ready.
-        await dismissCatalogueOverlays(page,{provider,url,confirmAdult:args['confirm-adult']===true,graceMs:450,requireClear:true});
-        const {clip,aligned}=await screenshotBox(page,inspected.frame);
-        const image=await page.screenshot({type:'jpeg',quality:imageQuality,...(clip?{clip}:{})});
+        const {clip,aligned,image}=await captureWithoutCatalogueOverlays(page,{provider,url,confirmAdult:args['confirm-adult']===true},async()=>{
+          inspected=await bestFrame(page,provider,{forceImage:!!args['always-image']});
+          if(!inspected)throw Error('no page frame');
+          const {clip,aligned}=await screenshotBox(page,inspected.frame);
+          const image=await page.screenshot({type:'jpeg',quality:imageQuality,...(clip?{clip}:{})});
+          return {clip,aligned,image};
+        });
         const width=Math.round(clip?.width||page.viewportSize().width),height=Math.round(clip?.height||page.viewportSize().height);
         // If the frame was clipped/zoomed, its normalized controls do not align to the JPEG.
         if(!aligned){inspected.data={...inspected.data,mode:'visual',candidates:[],adapter:'unaligned-frame',metadata:{...inspected.data.metadata,frameNotAligned:true}};}

@@ -1,6 +1,7 @@
 // Only dismiss a verified Pragmatic public DEMO intro; never click in unknown providers.
 const KNOWN=/\/IntroScreen\/.*(?:\/StartSpin_Button|\/CloseButton\/ButtonSpin)$/i;
 const REJECT=/^reject all$|^rechazar todo$/i;
+export const isCatalogueOverlayAction=action=>/reject\s+all|rechazar\s+todo|cookies?|consent\s+overlay|privacy\s+(?:notice|dialog)|age\s+gate/i.test((action?.label||'')+' '+(action?.controlPath||''));
 
 function demoTarget(page,provider,url){
  if(provider!=='pragmatic'||typeof url!=='string')return false;
@@ -37,16 +38,34 @@ export async function dismissCatalogueOverlays(page,{
    result.cookiesDismissed++;
   }
  };
- await sweep();
- if(graceMs>0){
-  if(page.waitForTimeout)await page.waitForTimeout(Math.min(graceMs,2000));
+ // No per-process "already dismissed" flag: every context and every recurrence
+ // must be checked. Bound repeated CMP failures instead of looping forever.
+ let gracePending=graceMs>0;
+ for(let attempt=0;attempt<8;attempt++){
+  const before=result.cookiesDismissed+Number(result.ageConfirmed);
   await sweep();
+  const changed=result.cookiesDismissed+Number(result.ageConfirmed)>before;
+  if(changed){if(page.waitForTimeout)await page.waitForTimeout(100);continue;}
+  if(gracePending){gracePending=false;if(page.waitForTimeout)await page.waitForTimeout(Math.min(graceMs,2000));continue;}
+  break;
  }
  if(requireClear){
   if(await visible(age))throw Error('Adult age gate still blocks the public DEMO');
   if(await visible(cookie))throw Error('Cookie consent overlay still covers the game');
  }
  return result;
+}
+
+// A screenshot is observational and may safely be repeated. If the CMP appears
+// while it is taken, discard it and re-extract metadata and pixels together.
+export async function captureWithoutCatalogueOverlays(page,options,capture){
+ for(let attempt=0;attempt<3;attempt++){
+  await dismissCatalogueOverlays(page,{...options,graceMs:450,requireClear:true});
+  const snapshot=await capture();
+  const after=await dismissCatalogueOverlays(page,{...options,graceMs:100,requireClear:true});
+  if(!after.cookiesDismissed&&!after.ageConfirmed)return snapshot;
+ }
+ throw Error('Catalogue overlay repeatedly interrupted capture; screenshot discarded');
 }
 
 // Only the public catalogue's DEMO launcher, never a game purchase/spin button.
