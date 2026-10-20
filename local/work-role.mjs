@@ -9,7 +9,7 @@ import {setTimeout as sleep} from 'node:timers/promises';
 import {cli,writeAtomic,safeId,safeHttps} from './utils.js';
 import {CloudClient} from './cloud-client.js';
 import {classifyStructured} from './structured-classifier.js';
-import {discoverPublicDemos} from './discover.js';
+import {discoverPublicDemos,validateDiscoveryTicket} from './discover.js';
 
 const args=cli(process.argv.slice(2));
 const role=String(args.role||'');
@@ -61,8 +61,7 @@ async function catalogTicket(job){
  return {captured:true,gameId:game.id};
 }
 async function discoveryTicket(job){
- const source=job.payload?.source;
- if(source?.provider!==job.provider||source?.id!==job.subject)throw Error('discovery identity mismatch');
+ const source=validateDiscoveryTicket(job);
  const {chromium}=await import('playwright');
  const browser=await chromium.launch({headless:true});
  let result;
@@ -72,7 +71,7 @@ async function discoveryTicket(job){
   // Unverified providers are staged for review; do not launch unknown demo URLs.
   for(let i=0;i<result.games.length;i+=20){
    const jobs=result.games.slice(i,i+20).map(game=>({role:'catalog',provider:game.provider,subject:game.gameId,
-    priority:10,payload:{game:{provider:game.provider,id:game.gameId,url:game.url},sourceId:source.id}}));
+    priority:10,payload:{game:{provider:game.provider,id:game.gameId,url:game.url}}}}));
    queued+=(await cloud.enqueueWork(runId,jobs)).inserted;
   }
  }
