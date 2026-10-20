@@ -83,7 +83,8 @@ test('expired lease is recovered by another worker and failures back off per tic
   const failed=(await (await post(f.env,'/v1/work/finish',{id:recovered.id,workerId:'second',leaseToken:recovered.leaseToken,ok:false,error:'public demo timed out'})).json()).job;
   assert.equal(failed.status,'pending');assert.ok(failed.availableAt>Math.floor(Date.now()/1000));
   const other=(await (await post(f.env,'/v1/work/claim',{runId,role:'catalog',workerId:'third'})).json()).job;
-  assert.equal(other.subject,'beta');
+  assert.notEqual(other.id,first.id,'failed ticket must not be immediately re-leased');
+  assert.deepEqual(new Set([other.subject,first.subject]),new Set(['alpha','beta']));
  }finally{f.close();}
 });
 test('registration and job backlog are isolated by run/provider and require REVIEW bearer',async()=>{
