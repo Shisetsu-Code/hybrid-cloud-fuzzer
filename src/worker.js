@@ -1,7 +1,7 @@
 import {InputError,ingest,claim,save,release,rawItem,publicItem,stats,gameBlockers,decisionsFeed} from './core.js';
 import {handleMcp} from './mcp.js';
 import {recordTrace,retrieveTrace} from './traces.js';
-import {enqueueWork,claimWork,renewWork,finishWork,agentHeartbeat,workforceStats} from './workforce.js';
+import {enqueueWork,claimWork,renewWork,finishWork,deferWork,agentHeartbeat,workforceStats} from './workforce.js';
 import {setProviderPolicy,providerPolicies,acquireProviderSession,renewProviderSession,releaseProviderSession,providerWorkload} from './provider-pacing.js';
 import {progressReport} from './progress.js';
 
@@ -76,6 +76,7 @@ export default {
         if(p==='/v1/work/claim'&&request.method==='POST')return json({job:await claimWork(env,await readJSON(request))});
         if(p==='/v1/work/renew'&&request.method==='POST')return json({job:await renewWork(env,await readJSON(request))});
         if(p==='/v1/work/finish'&&request.method==='POST')return json({job:await finishWork(env,await readJSON(request))});
+        if(p==='/v1/work/defer'&&request.method==='POST')return json({job:await deferWork(env,await readJSON(request))});
         if(p==='/v1/work/agent'&&request.method==='POST')return json(await agentHeartbeat(env,await readJSON(request)));
         if(p==='/v1/work/stats'&&request.method==='GET')return json(await workforceStats(env,{runId:url.searchParams.get('runId')}));
         if(p==='/v1/work/provider/policy'&&request.method==='POST')return json({policy:await setProviderPolicy(env,await readJSON(request))});
