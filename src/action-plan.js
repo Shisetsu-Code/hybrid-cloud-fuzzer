@@ -1,11 +1,12 @@
 // Pure planning rules shared by the Worker progress view and local executor.
 export const isCatalogueOverlayAction=action=>/reject\s+all|rechazar\s+todo|cookies?|consent\s+overlay|privacy\s+(?:notice|dialog)|age\s+gate/i.test((action?.label||'')+' '+(action?.controlPath||''));
 const kinds=new Set(['buy','navigate','pick','other']);
+export const isNormalClick=action=>Boolean(action)&&kinds.has(action.kind)&&Number.isFinite(action.x)&&Number.isFinite(action.y)&&action.x>=0&&action.x<=1&&action.y>=0&&action.y<=1;
 const key=a=>`${a.state}|${String(a.controlPath||a.label||'').toLowerCase()}|${a.kind}`;
 export function reviewedAction(item,index){
  if(item?.status!=='classified'||!item.sourceSha256||!Number.isInteger(item.revision))throw Error('decision must be classified with current revision');
  const selection=item.decisions?.allMarks?.[index];
- if(!selection||!kinds.has(selection.kind)||!Number.isFinite(selection.x)||!Number.isFinite(selection.y)||selection.x<0||selection.x>1||selection.y<0||selection.y>1)throw Error('invalid classified action');
+ if(!isNormalClick(selection))throw Error('invalid classified action');
  const chosen=item.decisions?.selections?.find(s=>s.kind===selection.kind&&s.label===selection.label&&s.x===selection.x&&s.y===selection.y);
  const candidateId=chosen?.candidateId||selection.candidateId;
  const candidate=candidateId?(item.candidates||[]).find(c=>c.id===candidateId):null;

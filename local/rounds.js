@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {safeHttps,writeAtomic,readJSON} from './utils.js';
-import {reviewedAction,eligibleReviewedPath} from '../src/action-plan.js';
+import {reviewedAction,eligibleReviewedPath,isNormalClick} from '../src/action-plan.js';
 
 const digest=v=>createHash('sha256').update(String(v)).digest('hex');
 export function roundReady(counts){return Boolean(counts)&&Number(counts.pending||0)===0&&Number(counts.leased||0)===0&&Number(counts.needs_review||0)===0;}
