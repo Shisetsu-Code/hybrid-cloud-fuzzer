@@ -71,7 +71,7 @@ async function discoveryTicket(job){
   // Unverified providers are staged for review; do not launch unknown demo URLs.
   for(let i=0;i<result.games.length;i+=20){
    const jobs=result.games.slice(i,i+20).map(game=>({role:'catalog',provider:game.provider,subject:game.gameId,
-    priority:10,payload:{game:{provider:game.provider,id:game.gameId,url:game.url}}}}));
+    priority:10,payload:{game:{provider:game.provider,id:game.gameId,url:game.url}}}));
    queued+=(await cloud.enqueueWork(runId,jobs)).inserted;
   }
  }
