@@ -9,6 +9,7 @@ import {cli,readJSON,writeAtomic,safeId} from './utils.js';
 import {planWorkforce,WORK_ROLES} from './work-allocation.js';
 import {CloudClient} from './cloud-client.js';
 import {validateDiscoverySource,discoveryTicketSubject} from './discover.js';
+import {updateDrainRequested} from './update-drain.js';
 
 const args=cli(process.argv.slice(2));
 if(args.help){
@@ -131,17 +132,23 @@ try{
  const seeds=await seedDiscovery();
  log('SEEDED',{catalog:seeded,discovery:seeds});
  do{
+  if(await updateDrainRequested()){stopping=true;break;}
   try{
    await seedDiscovery();await pulse();
   }catch(e){log('POLL ERROR',e.message);}
   if(!stopping)await sleep(interval);
  }while(!stopping);
 }finally{
- for(const role of WORK_ROLES)for(const a of allocations[role])requestStop(a);
- // Idle workers should exit promptly; in-flight public captures may need longer.
- const deadline=Date.now()+60000;
- while(Date.now()<deadline&&Object.values(allocations).some(xs=>xs.some(x=>x.child.exitCode===null)))
-  await sleep(350);
+ if(await updateDrainRequested()){
+  // During an upgrade child agents and the branch runner exit cooperatively
+  // after their current task. Never kill an in-flight reviewed DEMO click.
+  log('DRAIN WAIT: workers finishing current jobs');
+  while(Object.values(allocations).some(xs=>xs.some(x=>x.child.exitCode===null)))await sleep(500);
+ }else{
+  for(const role of WORK_ROLES)for(const a of allocations[role])requestStop(a);
+  const deadline=Date.now()+60000;
+  while(Date.now()<deadline&&Object.values(allocations).some(xs=>xs.some(x=>x.child.exitCode===null)))await sleep(350);
+ }
  log('STOPPED');
  process.off('SIGINT',stopSignal);process.off('SIGTERM',stopSignal);
 }

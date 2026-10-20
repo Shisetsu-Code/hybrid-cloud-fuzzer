@@ -9,6 +9,7 @@ import {bestFrame,screenshotBox} from './select-frame.js';
 import {dismissKnownIntro,openPublicDemo,dismissCatalogueOverlays} from './intro.js';
 import {createNetworkRecorder,shouldSaveHar,saveSanitizedHar,validateHarMode} from './har.js';
 import {validateSpeed,speedUpGame} from './speed.js';
+import {updateDrainRequested} from './update-drain.js';
 const args=cli(process.argv.slice(2));
 const base=path.resolve(args.out||'outbox');
 const listPath=path.resolve(args.manifest||'examples/demos.json');
@@ -32,14 +33,14 @@ async function run(){
   process.on('SIGINT',onStop);process.on('SIGTERM',onStop);
   try{
     for(const [i,game] of live.entries()){
-      if(stop||done>=limit)break;
+      if(stop||done>=limit||await updateDrainRequested())break;
       safeId(game.provider||'unknown','provider');safeId(game.id,'game id');
       const url=safeHttps(game.url),provider=game.provider||'unknown';
       const shotId=safeId(game.shotId||'base','shotId');
       const file=`${catalog.runId}__${provider}__${game.id}__${shotId}`;
       const metaFile=path.join(base,file+'.json'),jpegFile=path.join(base,file+'.jpg');
       if(await fs.stat(metaFile).catch(()=>null))continue;
-      await limiter.reserve();if(stop)break;
+      await limiter.reserve();if(stop||await updateDrainRequested())break;
       let context,recorder;
       try{
         context=await browser.newContext({viewport:{width:1280,height:720},serviceWorkers:'block'});

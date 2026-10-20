@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {RoundJournal,collectTasks,compactRemoteTrace} from './rounds.js';
 import {writeAtomic} from './utils.js';
+import {updateDrainRequested} from './update-drain.js';
 
 // Each (runId, provider, gameId) is its own classification/execution barrier.
 // A stalled game cannot prevent ready games from exploring reviewed DEMO paths.
@@ -99,6 +100,7 @@ export class LoopController{
   }
   const sources=new Map(items.map(i=>[i.id,i]));
   for(const task of selected){
+   if(await updateDrainRequested())break;
    const key=gameKey(task);
    try{
     await journal.set(task,'running');

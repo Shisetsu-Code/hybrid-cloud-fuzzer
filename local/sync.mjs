@@ -5,6 +5,7 @@ import path from 'node:path';
 import {createHash} from 'node:crypto';
 import {setTimeout as sleep} from 'node:timers/promises';
 import {cli,readJSON,writeAtomic} from './utils.js';
+import {updateDrainRequested} from './update-drain.js';
 const args=cli(process.argv.slice(2));
 const source=path.resolve(args.out||'outbox');
 const endpoint=(args.url||process.env.HYBRID_FUZZER_URL||'').replace(/\/$/,'');
@@ -50,4 +51,4 @@ export async function syncOnce({sourceDir=source,fetcher=fetch,log=console.log}=
   }));
   log(`SYNC uploaded=${saved} skipped=${skipped} failed=${failed}`);return {saved,skipped,failed};
 }
-if(process.argv[1]?.endsWith('sync.mjs')){do{await syncOnce();if(args.watch)await sleep(interval);}while(args.watch);}
+if(process.argv[1]?.endsWith('sync.mjs')){do{if(await updateDrainRequested())break;await syncOnce();if(args.watch)await sleep(interval);}while(args.watch);}

@@ -4,6 +4,10 @@ Fast **multi-provider** visual/control classifier and reviewed branch explorer f
 
 **[Controls from runtime/DOM] → D1 → MCP → decisions**. If the controls are inaccessible or unreliable: **[JPEG → private R2] → MCP vision → normalized marks**. Both paths share the same queue, locks and output contract.
 
+## Actualización automática de GitHub y Windows
+
+Se pueden conectar los cambios de `main` con un deploy de Cloudflare (pruebas, migraciones D1 y publicación) y la actualización del recopilador local sin perder capturas. Requiere configurar los secretos de despliegue **una sola vez** y activar `-AutoUpdate` en Windows. El reinicio espera a que los workers terminen sus tareas; nunca fuerza cambios locales ni una rama divergente. Consultá **[Actualizaciones automáticas](docs/AUTO_UPDATES.md)**.
+
 ## Dynamic workforce (discovery, catalogue, classification, branches)
 
 A **D1-backed workforce control plane** and local adaptive worker supervisor are available. It assigns bounded agent slots to discovery of operator-approved public-demo catalogues, per-game capture, high-confidence structured classification, and reviewed branch execution. Each game and provider can progress independently; leases, retries and idempotent task IDs prevent losing work on crashes.

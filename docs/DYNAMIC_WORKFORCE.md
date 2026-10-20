@@ -9,6 +9,8 @@ The repository has **two kinds of queues**, coordinated without sharing sessions
 
 The local/workforce.mjs supervisor reads live backlog every 15s and spawns/stops agent processes with a bounded slot budget. The default is **five workers total**, with **at most three browser-capable workers**. Role limits: one discovery, two catalogue, two structured classification, one branch executor. Demand reallocates unused slots; subprocesses shut down gracefully on downscaling. The existing shared disk rate limiter still caps public demo starts to **three per minute** across capture/branch processes. The supervisor writes .local-state/workforce-status.json with assignments, backlog and active PIDs.
 
+For automatic deployment on every `main` update, use **[GitHub and Windows auto-updates](AUTO_UPDATES.md)**. One-time Cloudflare credentials and an opt-in deployment switch are required.
+
 ## Deploy the D1 schema and Worker
 
 The new scheduler needs the additive 0003_dynamic_workforce.sql migration. Existing items, classifications and R2 captures are untouched.

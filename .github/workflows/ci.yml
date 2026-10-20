@@ -26,15 +26,6 @@ jobs:
         env:
           INTEGRATION_BROWSER: '1'
         run: node --test test/browser-fixture.test.js
-      - name: Snapshot tested source
-        if: always() && matrix.node == '22'
-        run: git archive --format=tar.gz HEAD > /tmp/hybrid-source.tar.gz
-      - uses: actions/upload-artifact@v4
-        if: always() && matrix.node == '22'
-        with:
-          name: tested-source
-          path: /tmp/hybrid-source.tar.gz
-          retention-days: 3
 
   windows-bootstrap:
     name: Windows collector first-run bootstrap
@@ -44,4 +35,4 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: node --test test/collector-control.test.js test/collector-setup.test.js
+      - run: node --test test/collector-control.test.js test/collector-setup.test.js test/auto-update.test.js
