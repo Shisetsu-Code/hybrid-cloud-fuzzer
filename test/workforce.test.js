@@ -5,7 +5,7 @@ import {DatabaseSync} from 'node:sqlite';
 import worker from '../src/worker.js';
 import {planWorkforce} from '../local/work-allocation.js';
 import {classifyStructured} from '../local/structured-classifier.js';
-import {selectPublicDemoLinks,validateDiscoverySource} from '../local/discover.js';
+import {selectPublicDemoLinks,validateDiscoverySource,discoveryTicketSubject,validateDiscoveryTicket} from '../local/discover.js';
 
 const runId='work-test';
 function fixture({migrate=true}={}){
@@ -160,3 +160,16 @@ async function postIngest(env,payload){
  const response=await request(env,'/v1/items',{method:'POST',body:payload,token:'ingest-test'});
  assert.equal(response.status,201);
 }
+
+test('discovery task identity matches the periodic source bucket in the worker',()=>{
+ const source={id:'playtech-catalogue',provider:'playtech',enabled:true,approved:true,verifiedDemo:false,
+  indexUrls:['https://public.example.org/demos/'],gameUrlPrefix:'https://public.example.org/demos/',
+  gamePathPattern:'^/demos/[a-z0-9-]+/$'};
+ const ticket={role:'discovery',provider:'playtech',
+  subject:discoveryTicketSubject(source.id,12345),payload:{source}};
+ assert.equal(validateDiscoveryTicket(ticket),source);
+ assert.throws(()=>validateDiscoveryTicket({...ticket,provider:'pragmatic'}),/identity mismatch/);
+ assert.throws(()=>validateDiscoveryTicket({...ticket,subject:source.id}),/identity mismatch/);
+ assert.throws(()=>validateDiscoveryTicket({...ticket,subject:source.id+'-foobar'}),/identity mismatch/);
+ assert.throws(()=>discoveryTicketSubject('x'.repeat(76),12345),/75/);
+});
