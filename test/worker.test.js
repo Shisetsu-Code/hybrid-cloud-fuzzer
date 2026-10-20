@@ -210,3 +210,38 @@ test('health restores only the missing additive trace table without disturbing c
     assert.equal((await get(f.env,'/v1/stats')).status,200);
   }finally{f.close()}
 });
+
+test('game-specific unresolved status is private, paginated, and never hides a failed sibling',async()=>{
+ const f=fixture();try{
+  // One healthy game, one game waiting on a new child, one needing review.
+  await upload(f.env,item({gameId:'gamma'}),null);
+  const gamma=(await (await request(f.env,'/v1/claim',{runId:'test-run',provider:'pragmatic'})).json()).item;
+  await request(f.env,'/v1/save',{id:gamma.id,leaseId:gamma.leaseId,revision:gamma.revision,sourceSha256:gamma.sourceSha256,
+    reviewer:'gpt',status:'classified',selections:[{candidateId:'c0',kind:'buy'}]});
+  await upload(f.env,item({gameId:'alpha',shotId:'child'}),null);
+  await upload(f.env,item({gameId:'beta'}),null);
+  // Claim alpha then release, claim beta and mark it as needing review.
+  const a=(await (await request(f.env,'/v1/claim',{runId:'test-run'})).json()).item;
+  assert.equal(a.gameId,'alpha');
+  await request(f.env,'/v1/release',{id:a.id,leaseId:a.leaseId,revision:a.revision});
+  // alpha would win the next FIFO claim; mark it leased while saving beta.
+  const again=(await (await request(f.env,'/v1/claim',{runId:'test-run'})).json()).item;
+  assert.equal(again.gameId,'alpha');
+  const beta=(await (await request(f.env,'/v1/claim',{runId:'test-run'})).json()).item;
+  assert.equal(beta.gameId,'beta');
+  await request(f.env,'/v1/save',{id:beta.id,leaseId:beta.leaseId,revision:beta.revision,sourceSha256:beta.sourceSha256,
+    reviewer:'gpt',status:'needs_review',selections:[]});
+
+  assert.equal((await get(f.env,'/v1/game-blockers?runId=test-run','ingest-test')).status,401);
+  assert.equal((await get(f.env,'/v1/game-blockers')).status,400);
+  const page1=(await (await get(f.env,'/v1/game-blockers?runId=test-run&limit=1')).json());
+  assert.equal(page1.items.length,1);assert.equal(page1.items[0].gameId,'alpha');
+  assert.equal(page1.items[0].leased,1);assert.equal(page1.hasMore,true);
+  const page2=(await (await get(f.env,'/v1/game-blockers?runId=test-run&limit=1&after='+encodeURIComponent(page1.nextAfter))).json());
+  assert.equal(page2.items[0].gameId,'beta');
+  assert.equal(page2.items[0].needs_review,1);assert.equal(page2.hasMore,false);
+  assert.equal((await get(f.env,'/v1/game-blockers?runId=test-run&after=invalid%2F%2Fcursor')).status,400);
+  const empty=(await (await get(f.env,'/v1/game-blockers?runId=other-run')).json());
+  assert.deepEqual(empty.items,[]);
+ }finally{f.close();}
+});

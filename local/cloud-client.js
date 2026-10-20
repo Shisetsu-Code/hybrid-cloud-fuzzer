@@ -24,6 +24,25 @@ export class CloudClient{
   }
   throw Error('decision feed exceeds pagination budget');
  }
+ // Return the game IDs that have unclassified, leased or needs-review captures.
+ // This is a separate read-only, paginated REVIEW-token query: never guess that
+ // an empty /v1/decisions feed means an unresolved game is ready.
+ async blockedGames(runId){
+  const blocked=new Set();let after='';
+  for(let page=0;page<1000;page++){
+   const q=new URLSearchParams({runId,after,limit:'250'});
+   const data=await this.call('/v1/game-blockers?'+q);
+   if(!data||!Array.isArray(data.items)||typeof data.hasMore!=='boolean')throw Error('invalid game blocker response');
+   for(const entry of data.items){
+    if(!entry||typeof entry.provider!=='string'||typeof entry.gameId!=='string')throw Error('invalid blocked game identity');
+    blocked.add(entry.provider+'/'+entry.gameId);
+   }
+   if(!data.hasMore)return blocked;
+   if(typeof data.nextAfter!=='string'||data.nextAfter<=after)throw Error('game blocker cursor did not advance');
+   after=data.nextAfter;
+  }
+  throw Error('game blockers exceed pagination budget');
+ }
  async item(id){return (await this.call('/v1/items/'+encodeURIComponent(id))).item;}
  async uploadCapture(item,image){
   if(item.mode==='structured')return this.call('/v1/items',{role:'ingest',method:'POST',body:JSON.stringify(item)});

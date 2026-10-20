@@ -109,6 +109,33 @@ export async function stats(env,{runId=null,provider=null}={}){
   const counts={pending:0,leased:0,classified:0,needs_review:0};for(const row of rows.results||[])if(row.status in counts)counts[row.status]=row.count;
   return {counts,total:Object.values(counts).reduce((a,b)=>a+b,0)};
 }
+// Read-only game-scoped barrier. A review failure in one game cannot block
+// the other games of the same run. This endpoint deliberately lists *only*
+// games with unresolved captures; it never returns credentials or screenshots.
+// Cursor is a public "provider/gameId" pair, never an offset over a changing queue.
+export async function gameBlockers(env,{runId,after='',limit=200}={}){
+  const id=/^[a-z0-9][a-z0-9_.-]{0,99}$/i;
+  if(typeof runId!=='string'||!id.test(runId))throw new InputError('valid runId required');
+  if(typeof after!=='string'||(after&&!/^[a-z0-9_.-]+\/[a-z0-9_.-]+$/i.test(after))||after.length>201)throw new InputError('invalid game cursor');
+  if(!Number.isSafeInteger(limit)||limit<1||limit>500)throw new InputError('invalid game page size');
+  const rows=await env.DB.prepare(
+    "SELECT provider,game_id, "+
+    "SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) AS pending, "+
+    "SUM(CASE WHEN status='leased' THEN 1 ELSE 0 END) AS leased, "+
+    "SUM(CASE WHEN status='needs_review' THEN 1 ELSE 0 END) AS needs_review "+
+    "FROM items WHERE run_id=? AND status IN ('pending','leased','needs_review') "+
+    "AND (provider || '/' || game_id)>? "+
+    "GROUP BY provider,game_id ORDER BY (provider || '/' || game_id) LIMIT ?")
+    .bind(runId,after,limit+1).all();
+  const found=rows.results||[];
+  const items=found.slice(0,limit).map(r=>({
+    provider:r.provider,gameId:r.game_id,pending:Number(r.pending),leased:Number(r.leased),needs_review:Number(r.needs_review)
+  }));
+  const hasMore=found.length>limit;
+  const last=items.at(-1);
+  return {items,nextAfter:last?last.provider+'/'+last.gameId:after,hasMore};
+}
+
 export async function decisionsFeed(env,{runId=null,after=0,limit=50}={}){
   if(!Number.isSafeInteger(after)||after<0||!Number.isSafeInteger(limit)||limit<1||limit>200)throw new InputError('invalid feed paging');
   if(runId&&!/^[a-z0-9][a-z0-9_.-]{0,99}$/i.test(runId))throw new InputError('invalid runId');

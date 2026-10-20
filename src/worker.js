@@ -1,4 +1,4 @@
-import {InputError,ingest,claim,save,release,rawItem,publicItem,stats,decisionsFeed} from './core.js';
+import {InputError,ingest,claim,save,release,rawItem,publicItem,stats,gameBlockers,decisionsFeed} from './core.js';
 import {handleMcp} from './mcp.js';
 import {recordTrace,retrieveTrace} from './traces.js';
 
@@ -67,6 +67,7 @@ export default {
         if(p==='/v1/save'&&request.method==='POST')return json({item:await save(env,await readJSON(request))});
         if(p==='/v1/release'&&request.method==='POST')return json({item:await release(env,await readJSON(request))});
         if(p==='/v1/stats'&&request.method==='GET')return json(await stats(env,{runId:url.searchParams.get('runId'),provider:url.searchParams.get('provider')}));
+        if(p==='/v1/game-blockers'&&request.method==='GET')return json(await gameBlockers(env,{runId:url.searchParams.get('runId'),after:url.searchParams.get('after')||'',limit:Number(url.searchParams.get('limit')||200)}));
         const traceMatch=/^\/v1\/traces\/([a-f0-9]{64})$/i.exec(p);
         if(traceMatch&&request.method==='GET')return json(await retrieveTrace(env,traceMatch[1]));
         if(p==='/v1/decisions'&&request.method==='GET')return json(await decisionsFeed(env,{runId:url.searchParams.get('runId'),after:Number(url.searchParams.get('after')||0),limit:Number(url.searchParams.get('limit')||50)}));
