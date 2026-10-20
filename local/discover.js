@@ -23,7 +23,7 @@ export function validateDiscoveryTicket(job){
  const subject=String(job?.subject||'');
  const prefix=config.id+'-';
  const suffix=subject.startsWith(prefix)?subject.slice(prefix.length):'';
- if(config.provider!==job.provider||!/^\\d{1,12}$/.test(suffix)||
+ if(config.provider!==job.provider||!/^\d{1,12}$/.test(suffix)||
   discoveryTicketSubject(config.id,Number(suffix))!==subject)
   throw Error('discovery identity mismatch');
  return source;
