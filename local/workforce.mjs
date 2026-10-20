@@ -8,7 +8,7 @@ import {setTimeout as sleep} from 'node:timers/promises';
 import {cli,readJSON,writeAtomic,safeId} from './utils.js';
 import {planWorkforce,WORK_ROLES} from './work-allocation.js';
 import {CloudClient} from './cloud-client.js';
-import {validateDiscoverySource} from './discover.js';
+import {validateDiscoverySource,discoveryTicketSubject} from './discover.js';
 
 const args=cli(process.argv.slice(2));
 if(args.help){
@@ -84,7 +84,7 @@ async function seedDiscovery(){
  for(const source of sources){
   if(source?.enabled!==true||source.approved!==true)continue;
   validateDiscoverySource(source);
-  const id=source.id+'-'+bucket;
+  const id=discoveryTicketSubject(source.id,bucket);
   approved.push({role:'discovery',provider:source.provider,subject:safeId(id),priority:5,
    payload:{source}});
  }
