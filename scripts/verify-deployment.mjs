@@ -13,7 +13,7 @@ export async function verify({url=process.env.HYBRID_FUZZER_URL,mcpToken=process
     return value;
   }
   const health=await request('/health');
-  if(health.ok!==true||health.schemaVersion!==2)throw Error('Worker schema is not ready');
+  if(health.ok!==true||Number(health.schemaVersion)<4||health.workforceReady!==true||health.pacingReady!==true)throw Error('Worker schema 0004 (workforce + provider pacing) is not ready');
   const stats=await request('/v1/stats',{headers:{Authorization:`Bearer ${reviewToken}`}});
   if(typeof stats.total!=='number')throw Error('Unexpected D1 stats response');
   const rpc=async(id,method,params={})=>request('/mcp',{method:'POST',headers:{Authorization:`Bearer ${mcpToken}`,'Content-Type':'application/json','Accept':'application/json, text/event-stream'},body:JSON.stringify({jsonrpc:'2.0',id,method,params})});
