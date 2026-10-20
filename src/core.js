@@ -125,7 +125,7 @@ export async function gameBlockers(env,{runId,after='',limit=200}={}){
     "SUM(CASE WHEN status='needs_review' THEN 1 ELSE 0 END) AS needs_review "+
     "FROM items WHERE run_id=? AND status IN ('pending','leased','needs_review') "+
     "AND (provider || '/' || game_id)>? "+
-    "GROUP BY provider,game_id ORDER BY provider,game_id LIMIT ?")
+    "GROUP BY provider,game_id ORDER BY (provider || '/' || game_id) LIMIT ?")
     .bind(runId,after,limit+1).all();
   const found=rows.results||[];
   const items=found.slice(0,limit).map(r=>({
