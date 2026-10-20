@@ -4,7 +4,7 @@ Hay dos mecanismos distintos. El despliegue remoto se ejecuta en GitHub Actions 
 
 ## 1. Configurar una sola vez el despliegue de Cloudflare
 
-GitHub contiene el workflow .github/workflows/deploy-cloudflare.yml. Se activa al subir o fusionar cambios de Worker, esquema o dependencias en main. Primero ejecuta npm ci, npm run check y npm test; después aplica migraciones D1 remotas, despliega el Worker y verifica /health con schemaVersion >= 3.
+GitHub contiene el workflow .github/workflows/deploy-cloudflare.yml. Se activa al subir o fusionar cambios de Worker, esquema o dependencias en main. Primero ejecuta npm ci, npm run check y npm test; después aplica migraciones D1 remotas, despliega el Worker y verifica /health con schemaVersion >= 4, workforceReady=true y pacingReady=true.
 
 Por seguridad el despliegue está desactivado inicialmente hasta configurar estas opciones en el repositorio (Settings > Secrets and variables > Actions):
 
@@ -59,3 +59,5 @@ El comando -Action Stop sin opciones también detiene al actualizador. El servic
 - Los workers de Cloudflare no pueden reiniciar procesos en tu PC. El actualizador local necesita Windows encendido y el proceso Updater activo; si el PC está apagado, se pondrá al día cuando vuelvas a iniciar el recopilador.
 - Si hay cambios locales, diverge la rama, no se puede verificar GitHub/Cloudflare o fallan las pruebas, la actualización se difiere y se registra el error. No se fuerza una actualización incompatible.
 - La automatización no reemplaza la revisión de cambios potencialmente peligrosos que lleguen a main. Protegé main con revisión y comprobaciones CI obligatorias.
+
+Para desplegar también la flota de 8 GitHub Actions runners, seguir el [runbook completo para Codex](https://github.com/Shisetsu-Code/Hybrid-actions/blob/main/docs/CODEX_DEPLOY_RUNBOOK.md); este actualizador local de Windows no sustituye la migración D1 ni la configuración de secretos del segundo repositorio.

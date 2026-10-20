@@ -1,5 +1,7 @@
 # Hybrid Cloud Fuzzer
 
+**Despliegue de Codex (Cloudflare + ocho runners):** [Guía integral de despliegue](https://github.com/Shisetsu-Code/Hybrid-actions/blob/main/docs/CODEX_DEPLOY_RUNBOOK.md) y [handoff local del coordinador](docs/CODEX_HANDOFF.md). Requiere D1 esquema **0004**, /health schemaVersion>=4, workforceReady y pacingReady; no basta una CI exitosa ni la comprobación antigua de versión 2. Los secretos y proveedores se configuran por separado.
+
 Fast **multi-provider** visual/control classifier and reviewed branch explorer for public game demos. It is **not** a real-money casino client. The local executor may click *reviewed* public-DEMO purchase controls and record sanitized network evidence; it never uses real-money accounts or payment credentials.
 
 **[Controls from runtime/DOM] → D1 → MCP → decisions**. If the controls are inaccessible or unreliable: **[JPEG → private R2] → MCP vision → normalized marks**. Both paths share the same queue, locks and output contract.
