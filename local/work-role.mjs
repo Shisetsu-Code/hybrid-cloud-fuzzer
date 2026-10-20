@@ -10,6 +10,7 @@ import {cli,writeAtomic,safeId,safeHttps} from './utils.js';
 import {CloudClient} from './cloud-client.js';
 import {classifyStructured} from './structured-classifier.js';
 import {discoverPublicDemos,validateDiscoveryTicket} from './discover.js';
+import {updateDrainRequested} from './update-drain.js';
 
 const args=cli(process.argv.slice(2));
 const role=String(args.role||'');
@@ -120,6 +121,7 @@ async function queuedTicket(){
 let lastHeartbeat=0;
 try{
  while(!stopping){
+  if(await updateDrainRequested()){stopping=true;break;}
   try{
    if(Date.now()-lastHeartbeat>25000){
     await cloud.agentHeartbeat(runId,workerId,role,host);

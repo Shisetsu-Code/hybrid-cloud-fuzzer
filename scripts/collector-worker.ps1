@@ -1,10 +1,13 @@
-param([Parameter(Mandatory=$true)][ValidateSet('Capture','Sync','Branches','Workforce')][string]$Role)
+param([Parameter(Mandatory=$true)][ValidateSet('Capture','Sync','Branches','Workforce','Updater')][string]$Role)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 Set-Location -LiteralPath $repo
 $config = Get-Content -Raw -LiteralPath (Join-Path $repo '.local-state/collector-control.json') | ConvertFrom-Json
 $node = (Get-Command node.exe -ErrorAction Stop).Source
-if ($Role -eq 'Workforce') {
+if ($Role -eq 'Updater') {
+    # No secret access: the updater fetches only the trusted GitHub main branch.
+    & (Join-Path $repo 'scripts/collector-update.ps1')
+} elseif ($Role -eq 'Workforce') {
     $secrets = Import-Clixml -LiteralPath (Join-Path $repo '.wrangler/deployment-secrets.xml')
     $env:HYBRID_FUZZER_URL = $config.workerUrl
     $env:HYBRID_INGEST_TOKEN = [Net.NetworkCredential]::new('', $secrets['INGEST_TOKEN']).Password

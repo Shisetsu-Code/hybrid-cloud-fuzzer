@@ -8,6 +8,7 @@ import {CloudClient} from './cloud-client.js';
 import {LoopController} from './loop.js';
 import {executeDemoBranch} from './branch-executor.js';
 import {validateSpeed} from './speed.js';
+import {updateDrainRequested} from './update-drain.js';
 
 const args=cli(process.argv.slice(2));
 if(args.help){console.log('node local/round-runner.mjs --manifest=examples/demos.json --out=outbox --watch --limit=5 --interval-ms=15000 [--headed] [--speed=4] [--confirm-adult]');process.exit(0);}
@@ -26,6 +27,7 @@ const run=async()=>{
  const worker=new LoopController({cloud,runId:manifest.runId,outDir:output,limit,maxDepth,allowNormalSpin:args['allow-normal-spin']===true,executor:async(task,source)=>{await limiter.reserve();return executeDemoBranch(task,source,
   {browser,manifest:manifest.games,waitMs,speed,confirmAdult:args['confirm-adult']===true});}});
  try{do{
+  if(await updateDrainRequested())break;
   try{const res=await worker.once();console.log('ROUND',JSON.stringify(res));}
   catch(e){console.error('ROUND ERROR',e.message);if(!args.watch)throw e;}
   if(args.watch&&!stop)await sleep(interval);

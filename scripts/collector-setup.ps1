@@ -8,6 +8,7 @@ param(
     [string]$BrowserPath = '',
     [switch]$ConfirmAdult,
     [switch]$DynamicWorkers,
+    [switch]$AutoUpdate,
     [string]$ProviderSources = '',
     [int]$MaxWorkers = 5,
     [int]$BrowserWorkers = 3,
@@ -70,6 +71,7 @@ if (-not (Test-Path -LiteralPath $configFile -PathType Leaf)) {
         speed=1
         adultConfirmed=[bool]$ConfirmAdult
         dynamicWorkers=[bool]$DynamicWorkers
+        autoUpdate=[bool]$AutoUpdate
         providerSourcesPath=$(if($ProviderSources){(Resolve-Path -LiteralPath $ProviderSources -ErrorAction Stop).Path}else{Join-Path $repo 'examples/provider-sources.json'})
         maxWorkers=$MaxWorkers
         browserWorkers=$BrowserWorkers

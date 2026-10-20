@@ -1,6 +1,9 @@
 param(
     [ValidateSet('Menu','Start','Stop','Status')][string]$Action = 'Menu',
-    [switch]$DynamicWorkers
+    [switch]$DynamicWorkers,
+    [switch]$AutoUpdate,
+    [switch]$KeepUpdater,
+    [switch]$Graceful
 )
 $ErrorActionPreference = 'Stop'
 $script:repo = Split-Path $PSScriptRoot -Parent
@@ -24,7 +27,7 @@ function Save-CollectorRecord([hashtable]$Record) {
     [IO.File]::WriteAllText($temporary,$json,(New-Object System.Text.UTF8Encoding($false)))
     Move-Item -LiteralPath $temporary -Destination $script:stateFile -Force
 }
-function Get-ManagedWorker([ValidateSet('Capture','Sync','Branches','Workforce')][string]$Role,[hashtable]$Record) {
+function Get-ManagedWorker([ValidateSet('Capture','Sync','Branches','Workforce','Updater')][string]$Role,[hashtable]$Record) {
     $key = $Role.ToLowerInvariant()
     $workerId = $Record[$key + 'Pid']
     $created = $Record[$key + 'StartedAt']
@@ -41,13 +44,19 @@ function Get-CollectorStatus {
     $sync = Get-ManagedWorker -Role Sync -Record $record
     $branches = Get-ManagedWorker -Role Branches -Record $record
     $workforce = Get-ManagedWorker -Role Workforce -Record $record
+    $updater = Get-ManagedWorker -Role Updater -Record $record
     $configPresent = Test-Path -LiteralPath $script:settingsFile -PathType Leaf
     $secretsPresent = Test-Path -LiteralPath (Join-Path $script:repo '.wrangler/deployment-secrets.xml') -PathType Leaf
     $isDynamic = $false
+    $isAutoUpdate = $false
     if ($configPresent) {
-        try { $isDynamic = ((Get-Content -Raw -LiteralPath $script:settingsFile | ConvertFrom-Json).dynamicWorkers -eq $true) } catch {}
+        try {
+            $c = Get-Content -Raw -LiteralPath $script:settingsFile | ConvertFrom-Json
+            $isDynamic = ($c.dynamicWorkers -eq $true)
+            $isAutoUpdate = ($c.autoUpdate -eq $true)
+        } catch {}
     }
-    return [PSCustomObject]@{captureRunning=[bool]$capture;syncRunning=[bool]$sync;branchesRunning=[bool]$branches;workforceRunning=[bool]$workforce;workforcePid=$(if($workforce){$workforce.ProcessId}else{$null});dynamicWorkersConfigured=[bool]$isDynamic;branchesPid=$(if($branches){$branches.ProcessId}else{$null});capturePid=$(if($capture){$capture.ProcessId}else{$null});syncPid=$(if($sync){$sync.ProcessId}else{$null});configPresent=[bool]$configPresent;secretsPresent=[bool]$secretsPresent}
+    return [PSCustomObject]@{captureRunning=[bool]$capture;syncRunning=[bool]$sync;branchesRunning=[bool]$branches;workforceRunning=[bool]$workforce;updaterRunning=[bool]$updater;updaterPid=$(if($updater){$updater.ProcessId}else{$null});autoUpdateConfigured=[bool]$isAutoUpdate;workforcePid=$(if($workforce){$workforce.ProcessId}else{$null});dynamicWorkersConfigured=[bool]$isDynamic;branchesPid=$(if($branches){$branches.ProcessId}else{$null});capturePid=$(if($capture){$capture.ProcessId}else{$null});syncPid=$(if($sync){$sync.ProcessId}else{$null});configPresent=[bool]$configPresent;secretsPresent=[bool]$secretsPresent}
 }
 function Start-Collector {
     if (-not (Test-Path -LiteralPath $script:settingsFile -PathType Leaf)) {
@@ -75,11 +84,16 @@ function Start-Collector {
         $config | Add-Member -NotePropertyName dynamicWorkers -NotePropertyValue $true -Force
         [IO.File]::WriteAllText($script:settingsFile,($config | ConvertTo-Json -Depth 8),(New-Object System.Text.UTF8Encoding($false)))
     }
+    if ($AutoUpdate -and $config.autoUpdate -ne $true) {
+        $config | Add-Member -NotePropertyName autoUpdate -NotePropertyValue $true -Force
+        [IO.File]::WriteAllText($script:settingsFile,($config | ConvertTo-Json -Depth 8),(New-Object System.Text.UTF8Encoding($false)))
+    }
     if (($config.dynamicWorkers -ne $true) -and (Get-ManagedWorker -Role Workforce -Record $record)) {
         throw 'Deten Workforce antes de volver al modo legado.'
     }
     $hostPath = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
     $roles = if ($config.dynamicWorkers -eq $true) { @('Sync','Workforce') } else { @('Sync','Branches','Capture') }
+    if ($config.autoUpdate -eq $true) { $roles += 'Updater' }
     foreach ($role in $roles) {
         if (Get-ManagedWorker -Role $role -Record $record) { continue }
         $key = $role.ToLowerInvariant()
@@ -93,18 +107,30 @@ function Start-Collector {
         Save-CollectorRecord $record
     }
 }
-function Stop-Collector {
+function Stop-Collector([switch]$KeepUpdater,[switch]$Graceful) {
     $record = Read-CollectorRecord
-    foreach ($role in @('Workforce','Branches','Capture','Sync')) {
+    $deadline = (Get-Date).AddSeconds(300)
+    foreach ($role in @('Updater','Workforce','Branches','Capture','Sync')) {
+        if ($role -eq 'Updater' -and $KeepUpdater) { continue }
         $process = Get-ManagedWorker -Role $role -Record $record
         $key = $role.ToLowerInvariant()
         if ($process) {
-            # Only our verified worker and its descendants, including its Chromium.
-            $nativeProcess = Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue
-            $null = & "$env:SystemRoot\System32\taskkill.exe" /PID $process.ProcessId /T /F 2>&1
-            if ($nativeProcess -and -not $nativeProcess.WaitForExit(10000)) { throw "No se pudo detener $role." }
+            if ($Graceful) {
+                # The updater has created update-drain.flag. Each managed worker
+                # must exit at its task boundary; never interrupt a DEMO click.
+                while ($process -and (Get-Date) -lt $deadline) {
+                    Start-Sleep -Milliseconds 500
+                    $process = Get-ManagedWorker -Role $role -Record $record
+                }
+                if ($process) { throw "Worker $role sigue ocupado. Se pospone la actualizacion sin forzar acciones." }
+            } else {
+                # Explicit operator stop retains the original verified PID safety.
+                $nativeProcess = Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue
+                $null = & "$env:SystemRoot\System32\taskkill.exe" /PID $process.ProcessId /T /F 2>&1
+                if ($nativeProcess -and -not $nativeProcess.WaitForExit(10000)) { throw "No se pudo detener $role." }
+            }
         } elseif ($record[$key+'Pid'] -and (Get-Process -Id ([int]$record[$key+'Pid']) -ErrorAction SilentlyContinue)) {
-            throw 'El proceso guardado no es un worker propio; no se detuvo.'
+            throw 'El PID guardado pertenece a otro proceso; no se detuvo.'
         }
         $record.Remove($key+'Pid'); $record.Remove($key+'StartedAt')
         Save-CollectorRecord $record
@@ -119,7 +145,7 @@ function Invoke-CollectorAction([string]$RequestedAction) {
         try { $acquired = $mutex.WaitOne(0) } catch [Threading.AbandonedMutexException] { $acquired = $true }
         if (-not $acquired) { throw 'Ya hay otra operacion del recopilador en curso.' }
         if ($RequestedAction -eq 'Start') { Start-Collector }
-        elseif ($RequestedAction -eq 'Stop') { Stop-Collector }
+        elseif ($RequestedAction -eq 'Stop') { Stop-Collector -KeepUpdater:$KeepUpdater -Graceful:$Graceful }
     } finally { if ($acquired) { $mutex.ReleaseMutex() }; $mutex.Dispose() }
 }
 function Show-CollectorMenu {
@@ -149,7 +175,7 @@ function Show-CollectorMenu {
                 $label.Text = 'Captura: ' + $(if($status.captureRunning){'en marcha'}else{'detenida'}) + "`r`n" + 'Sincronizacion: ' + $(if($status.syncRunning){'en marcha'}else{'detenida'}) + "`r`n" + 'Ramas: ' + $(if($status.branchesRunning){'en marcha'}else{'detenida'})
             }
             $start.Enabled = if($status.dynamicWorkersConfigured){-not ($status.workforceRunning -and $status.syncRunning)}else{-not ($status.captureRunning -and $status.syncRunning -and $status.branchesRunning)}
-            $stop.Enabled = $status.workforceRunning -or $status.captureRunning -or $status.syncRunning -or $status.branchesRunning
+            $stop.Enabled = $status.updaterRunning -or $status.workforceRunning -or $status.captureRunning -or $status.syncRunning -or $status.branchesRunning
         } catch { $label.Text = 'Error al consultar el estado.' }
     }
     $start.Add_Click({ try { Invoke-CollectorAction 'Start'; & $refresh } catch { [Windows.Forms.MessageBox]::Show($_.Exception.Message,'Recopilador') | Out-Null } })
