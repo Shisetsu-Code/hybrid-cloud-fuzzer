@@ -1,6 +1,6 @@
 // Local Playwright-only public DEMO branch executor. Never runs on Cloudflare.
 import {bestFrame,screenshotBox} from './select-frame.js';
-import {openPublicDemo,dismissKnownIntro,dismissCatalogueOverlays} from './intro.js';
+import {openPublicDemo,dismissKnownIntro,dismissCatalogueOverlays,captureWithoutCatalogueOverlays,isCatalogueOverlayAction} from './intro.js';
 import {speedUpGame} from './speed.js';
 import {createNetworkRecorder,summarizeHar} from './har.js';
 import {chooseAction,resolveDemoUrl,classifyTrace,traceEndpoints} from './rounds.js';
@@ -18,6 +18,7 @@ export async function executeDemoBranch(task,source,{
  openDemo=openPublicDemo,inspect=bestFrame,frameBox=screenshotBox,recorderFactory=createNetworkRecorder
 }={}){
  if(!browser&&!chromium?.launch)throw Error('Playwright Chromium required');
+ if(task.path.some(isCatalogueOverlayAction))throw Error('Catalogue consent is not a reviewed game branch');
  const url=resolveDemoUrl(source,{catalog:manifest});
  const ownsBrowser=!browser;
  const activeBrowser=browser||await chromium.launch({headless});let context,recorder,actionIssued=false;
@@ -36,6 +37,7 @@ export async function executeDemoBranch(task,source,{
    if(!['buy','navigate','pick','other'].includes(step.kind))throw Error('unreviewed action type');
    let candidate=null,position=null,shot=null;
    for(let attempt=0;attempt<4;attempt++){
+    await dismissCatalogueOverlays(page,{provider:task.provider,url,confirmAdult,requireClear:true});
     candidate=await inspect(page,task.provider);
     if(!candidate)throw Error('no game frame');
     if(candidate.data.state==='INTRO'&&step.state!=='INTRO'&&task.provider==='pragmatic'){
@@ -62,11 +64,13 @@ export async function executeDemoBranch(task,source,{
    log(`CLICK ${task.gameId} ${i+1}/${task.path.length}: ${step.kind} ${step.label}`);
   }
   // Clear late catalogue dialogs before inspecting/cropping the evidence JPEG.
-  await dismissCatalogueOverlays(page,{provider:task.provider,url,confirmAdult,graceMs:350,requireClear:true});
-  const result=await inspect(page,task.provider);
-  if(!result)throw Error('game frame disappeared after reviewed action');
-  const box=await frameBox(page,result.frame);
-  const image=Buffer.from(await page.screenshot({type:'jpeg',quality:65,...(box.clip?{clip:box.clip}:{})}));
+  const {result,box,image}=await captureWithoutCatalogueOverlays(page,{provider:task.provider,url,confirmAdult},async()=>{
+   const result=await inspect(page,task.provider);
+   if(!result)throw Error('game frame disappeared after reviewed action');
+   const box=await frameBox(page,result.frame);
+   const image=Buffer.from(await page.screenshot({type:'jpeg',quality:65,...(box.clip?{clip:box.clip}:{})}));
+   return {result,box,image};
+  });
   const width=Math.round(box.clip?.width||page.viewportSize().width),height=Math.round(box.clip?.height||page.viewportSize().height);
   const evidence=actionEvidence(observed?.har||{log:{entries:[],_webSockets:[]}});
   const isAligned=box.aligned;

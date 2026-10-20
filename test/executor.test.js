@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {screenPoint,actionEvidence} from '../local/branch-executor.js';
+import {screenPoint,actionEvidence,executeDemoBranch} from '../local/branch-executor.js';
+
+test('executor refuses legacy cookie ancestry before opening a browser or clicking',async()=>{
+ let launched=false;
+ await assert.rejects(()=>executeDemoBranch({path:[{label:'Reject All cookies',kind:'navigate'}]}, {},
+  {chromium:{launch:async()=>{launched=true;throw Error('unexpected browser');}}}),/consent.*branch/);
+ assert.equal(launched,false);
+});
 test('normalized clicks are applied to a clipped and aligned game frame, not outer document',()=>{
  assert.deepEqual(screenPoint({x:.3,y:.6},{clip:{x:100,y:70,width:800,height:450},aligned:true}),{x:340,y:340});
  assert.throws(()=>screenPoint({x:.3,y:.6},{clip:null,aligned:false}),/alignment/i);
