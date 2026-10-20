@@ -58,6 +58,13 @@ export async function claimWork(env,{runId,role,provider=null,workerId,leaseSeco
  if(provider!==null)valid(provider,keyPattern,'provider');
  positive(leaseSeconds,30,900,'leaseSeconds');
  await requireWorkforce(env);
+ // Reap exhausted leases after a crashed worker; otherwise a max-attempt
+ // ticket could remain in the leased state indefinitely.
+ await env.DB.prepare(
+  "UPDATE workforce_jobs SET status='failed',lease_token=NULL,lease_owner=NULL,lease_until=NULL,"+
+  "last_error='lease expired after maximum attempts',updated_at=datetime('now') "+
+  "WHERE run_id=? AND role=? AND status='leased' AND lease_until<=? AND attempts>=max_attempts")
+  .bind(runId,role,nowSec()).run();
  // Compare-and-swap: competing hosts can never own the same valid lease.
  const filter=provider?' AND provider=?':'',now=nowSec();
  for(let retry=0;retry<4;retry++){

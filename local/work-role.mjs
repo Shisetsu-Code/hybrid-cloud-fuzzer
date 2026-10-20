@@ -2,7 +2,6 @@
 // One dynamically allocated local agent. D1 leases coordinate multiple hosts.
 // Cloudflare never runs a browser, and the classifier never guesses from pixels.
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import {createHash,randomUUID} from 'node:crypto';
 import {spawn} from 'node:child_process';
@@ -20,7 +19,7 @@ const outDir=path.resolve(args.out||'outbox');
 const cloud=new CloudClient({endpoint:process.env.HYBRID_FUZZER_URL,
  reviewToken:process.env.HYBRID_REVIEW_TOKEN,ingestToken:process.env.HYBRID_INGEST_TOKEN});
 const workerId='agent-'+process.pid+'-'+randomUUID().slice(0,8);
-const host=os.hostname().replace(/[^a-z0-9_.-]/gi,'_').slice(0,90)||'local';
+const host='local'; // Avoid sending a user's machine hostname to Cloudflare.
 const pollMs=Math.max(2000,Math.min(30000,Number(args['poll-ms']||6000)));
 const waitMs=Math.max(450,Math.min(20000,Number(args['wait-ms']||6500)));
 const speed=Math.max(1,Math.min(8,Number(args.speed||1)));

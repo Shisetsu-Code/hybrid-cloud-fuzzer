@@ -76,8 +76,9 @@ test('expired lease is recovered by another worker and failures back off per tic
   await post(f.env,'/v1/work/jobs',{runId,jobs:[ticket('pragmatic','alpha'),ticket('playtech','beta')]});
   const first=(await (await post(f.env,'/v1/work/claim',{runId,role:'catalog',workerId:'first'})).json()).job;
   f.sqlite.prepare("UPDATE workforce_jobs SET lease_until=? WHERE id=?").run(Math.floor(Date.now()/1000)-10,first.id);
-  const recovered=(await (await post(f.env,'/v1/work/claim',{runId,role:'catalog',workerId:'second'})).json()).job;
+  const recovered=(await (await post(f.env,'/v1/work/claim',{runId,role:'catalog',provider:first.provider,workerId:'second'})).json()).job;
   assert.equal(recovered.id,first.id);assert.notEqual(recovered.leaseToken,first.leaseToken);
+  // Provider-filtered recovery is deterministic even when another provider has fresh work.
   assert.equal((await post(f.env,'/v1/work/renew',{id:first.id,workerId:'first',leaseToken:first.leaseToken})).status,409);
   const failed=(await (await post(f.env,'/v1/work/finish',{id:recovered.id,workerId:'second',leaseToken:recovered.leaseToken,ok:false,error:'public demo timed out'})).json()).job;
   assert.equal(failed.status,'pending');assert.ok(failed.availableAt>Math.floor(Date.now()/1000));
