@@ -1,7 +1,8 @@
 import {InputError,ingest,claim,save,release,rawItem,publicItem,stats,gameBlockers,decisionsFeed} from './core.js';
 import {handleMcp} from './mcp.js';
 import {recordTrace,retrieveTrace} from './traces.js';
-import {enqueueWork,claimWork,renewWork,finishWork,agentHeartbeat,workforceStats} from './workforce.js';
+import {enqueueWork,claimWork,renewWork,finishWork,deferWork,agentHeartbeat,workforceStats} from './workforce.js';
+import {setProviderPolicy,providerPolicies,acquireProviderSession,renewProviderSession,releaseProviderSession,providerWorkload} from './provider-pacing.js';
 import {progressReport} from './progress.js';
 
 function eqSecret(a,b){
@@ -53,7 +54,9 @@ export default {
           if(Number(schema?.count)!==3)throw Error('D1 migration missing');
           const workforce=await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('workforce_jobs','workforce_agents')").first();
           const workforceReady=Number(workforce?.n)===2;
-          return json({ok:true,service:'hybrid-cloud-fuzzer',schemaVersion:workforceReady?3:2,workforceReady,storage:'R2',database:'D1',mcp:'/mcp'});}
+          const pacing=await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('provider_policies','provider_sessions')").first();
+          const pacingReady=Number(pacing?.n)===2;
+          return json({ok:true,service:'hybrid-cloud-fuzzer',schemaVersion:pacingReady?4:workforceReady?3:2,workforceReady,pacingReady,storage:'R2',database:'D1',mcp:'/mcp'});}
         catch{return json({ok:false,error:'D1/R2 not ready'},503);}
       }
       if(p==='/mcp')return authorized(request,env.MCP_TOKEN)?await handleMcp(request,env):reject();
@@ -73,8 +76,16 @@ export default {
         if(p==='/v1/work/claim'&&request.method==='POST')return json({job:await claimWork(env,await readJSON(request))});
         if(p==='/v1/work/renew'&&request.method==='POST')return json({job:await renewWork(env,await readJSON(request))});
         if(p==='/v1/work/finish'&&request.method==='POST')return json({job:await finishWork(env,await readJSON(request))});
+        if(p==='/v1/work/defer'&&request.method==='POST')return json({job:await deferWork(env,await readJSON(request))});
         if(p==='/v1/work/agent'&&request.method==='POST')return json(await agentHeartbeat(env,await readJSON(request)));
         if(p==='/v1/work/stats'&&request.method==='GET')return json(await workforceStats(env,{runId:url.searchParams.get('runId')}));
+        if(p==='/v1/work/provider/policy'&&request.method==='POST')return json({policy:await setProviderPolicy(env,await readJSON(request))});
+        if(p==='/v1/work/provider/policies'&&request.method==='GET')return json(await providerPolicies(env));
+        if(p==='/v1/work/provider/lease'&&request.method==='POST')return json(await acquireProviderSession(env,await readJSON(request)));
+        if(p==='/v1/work/provider/renew'&&request.method==='POST')return json(await renewProviderSession(env,await readJSON(request)));
+        if(p==='/v1/work/provider/release'&&request.method==='POST')return json(await releaseProviderSession(env,await readJSON(request)));
+        if(p==='/v1/work/providers'&&request.method==='GET')return json(await providerWorkload(env,{runId:url.searchParams.get('runId')}));
+
         if(p==='/v1/claim'&&request.method==='POST')return json({item:await claim(env,await readJSON(request))});
         if(p==='/v1/save'&&request.method==='POST')return json({item:await save(env,await readJSON(request))});
         if(p==='/v1/release'&&request.method==='POST')return json({item:await release(env,await readJSON(request))});
