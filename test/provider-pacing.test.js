@@ -124,3 +124,22 @@ test('provider workload exposes run-specific discovery/catalogue progress',async
   assert.equal((await route(f.env,'/v1/work/providers?runId=another-run')).body.providers.length,0);
  }finally{f.sqlite.close();}
 });
+
+test('unstarted tickets can be deferred without burning attempts or stealing a lease',async()=>{
+ const f=fixture();
+ try{
+  const ticket={role:'catalog',provider:'pragmatic',subject:'alpha',payload:{game:{id:'alpha'}}};
+  await post(f.env,'/v1/work/jobs',{runId:'test-catalogue',jobs:[ticket]});
+  const claimed=(await post(f.env,'/v1/work/claim',{runId:'test-catalogue',role:'catalog',workerId:'gha-runner'})).body.job;
+  assert.equal(claimed.attempts,1);
+  const denied=await post(f.env,'/v1/work/defer',{id:claimed.id,workerId:'other',leaseToken:claimed.leaseToken,delaySeconds:0});
+  assert.equal(denied.status,409);
+  const deferred=await post(f.env,'/v1/work/defer',{id:claimed.id,workerId:'gha-runner',leaseToken:claimed.leaseToken,delaySeconds:0});
+  assert.equal(deferred.status,200);
+  assert.equal(deferred.body.job.status,'pending');
+  assert.equal(deferred.body.job.attempts,0);
+  const newLease=(await post(f.env,'/v1/work/claim',{runId:'test-catalogue',role:'catalog',workerId:'gha-other'})).body.job;
+  assert.equal(newLease.id,claimed.id);
+  assert.notEqual(newLease.leaseToken,claimed.leaseToken);
+ }finally{f.sqlite.close();}
+});
