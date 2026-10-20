@@ -1,10 +1,25 @@
-param([Parameter(Mandatory=$true)][ValidateSet('Capture','Sync','Branches')][string]$Role)
+param([Parameter(Mandatory=$true)][ValidateSet('Capture','Sync','Branches','Workforce')][string]$Role)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 Set-Location -LiteralPath $repo
 $config = Get-Content -Raw -LiteralPath (Join-Path $repo '.local-state/collector-control.json') | ConvertFrom-Json
 $node = (Get-Command node.exe -ErrorAction Stop).Source
-if ($Role -eq 'Capture') {
+if ($Role -eq 'Workforce') {
+    $secrets = Import-Clixml -LiteralPath (Join-Path $repo '.wrangler/deployment-secrets.xml')
+    $env:HYBRID_FUZZER_URL = $config.workerUrl
+    $env:HYBRID_INGEST_TOKEN = [Net.NetworkCredential]::new('', $secrets['INGEST_TOKEN']).Password
+    $env:HYBRID_REVIEW_TOKEN = [Net.NetworkCredential]::new('', $secrets['REVIEW_TOKEN']).Password
+    if (-not $env:HYBRID_INGEST_TOKEN -or -not $env:HYBRID_REVIEW_TOKEN) { throw 'Faltan credenciales privadas para Workforce.' }
+    $env:PLAYWRIGHT_BROWSERS_PATH = $config.browserPath
+    Remove-Variable secrets
+    $maxWorkers = if ($config.maxWorkers) { [int]$config.maxWorkers } else { 5 }
+    $browserWorkers = if ($config.browserWorkers) { [int]$config.browserWorkers } else { 3 }
+    $arguments = @((Join-Path $repo 'local/workforce.mjs'), "--manifest=$($config.manifest)", "--out=$($config.outbox)",
+        "--max-workers=$maxWorkers", "--browser-workers=$browserWorkers", '--interval-ms=15000', "--speed=$($config.speed)", "--wait-ms=$($config.waitMs)")
+    if ($config.providerSourcesPath) { $arguments += "--providers=$($config.providerSourcesPath)" }
+    if ($config.adultConfirmed -eq $true) { $arguments += '--confirm-adult' }
+    & $node @arguments
+} elseif ($Role -eq 'Capture') {
     $env:PLAYWRIGHT_BROWSERS_PATH = $config.browserPath
     $arguments = @((Join-Path $repo 'local/capture.mjs'), "--manifest=$($config.manifest)", "--out=$($config.outbox)", "--rate=$($config.rate)", "--wait-ms=$($config.waitMs)", "--har=$($config.har)", "--speed=$($config.speed)")
     if ($config.adultConfirmed -eq $true) { $arguments += '--confirm-adult' }

@@ -1,6 +1,7 @@
 import {InputError,ingest,claim,save,release,rawItem,publicItem,stats,gameBlockers,decisionsFeed} from './core.js';
 import {handleMcp} from './mcp.js';
 import {recordTrace,retrieveTrace} from './traces.js';
+import {enqueueWork,claimWork,renewWork,finishWork,agentHeartbeat,workforceStats} from './workforce.js';
 
 function eqSecret(a,b){
   if(typeof a!=='string'||typeof b!=='string'||!a||!b)return false;
@@ -49,7 +50,9 @@ export default {
             }
           }
           if(Number(schema?.count)!==3)throw Error('D1 migration missing');
-          return json({ok:true,service:'hybrid-cloud-fuzzer',schemaVersion:2,storage:'R2',database:'D1',mcp:'/mcp'});}
+          const workforce=await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('workforce_jobs','workforce_agents')").first();
+          const workforceReady=Number(workforce?.n)===2;
+          return json({ok:true,service:'hybrid-cloud-fuzzer',schemaVersion:workforceReady?3:2,workforceReady,storage:'R2',database:'D1',mcp:'/mcp'});}
         catch{return json({ok:false,error:'D1/R2 not ready'},503);}
       }
       if(p==='/mcp')return authorized(request,env.MCP_TOKEN)?await handleMcp(request,env):reject();
@@ -63,6 +66,14 @@ export default {
       }
       if(p.startsWith('/v1/')){
         if(!authorized(request,env.REVIEW_TOKEN))return reject();
+        // Workforce scheduler: all mutating routes require the existing REVIEW token.
+        // Only the local agents execute discovery or captures; the Worker leases tickets.
+        if(p==='/v1/work/jobs'&&request.method==='POST')return json(await enqueueWork(env,await readJSON(request)),201);
+        if(p==='/v1/work/claim'&&request.method==='POST')return json({job:await claimWork(env,await readJSON(request))});
+        if(p==='/v1/work/renew'&&request.method==='POST')return json({job:await renewWork(env,await readJSON(request))});
+        if(p==='/v1/work/finish'&&request.method==='POST')return json({job:await finishWork(env,await readJSON(request))});
+        if(p==='/v1/work/agent'&&request.method==='POST')return json(await agentHeartbeat(env,await readJSON(request)));
+        if(p==='/v1/work/stats'&&request.method==='GET')return json(await workforceStats(env,{runId:url.searchParams.get('runId')}));
         if(p==='/v1/claim'&&request.method==='POST')return json({item:await claim(env,await readJSON(request))});
         if(p==='/v1/save'&&request.method==='POST')return json({item:await save(env,await readJSON(request))});
         if(p==='/v1/release'&&request.method==='POST')return json({item:await release(env,await readJSON(request))});

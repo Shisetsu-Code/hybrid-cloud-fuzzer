@@ -101,4 +101,9 @@ async function run(){
   }finally{process.off('SIGINT',onStop);process.off('SIGTERM',onStop);await browser.close();}
   console.log(`RESULT captured=${success} failed=${failed} output=${base}`);
 }
-await withLock(path.join(base,'.capture.lock'),run);
+// Dynamic catalog tickets can run for different games concurrently. The shared
+// .throttle.json still enforces the existing global rate of 3 starts/minute.
+const isolated=args['isolated-job']===true;
+if(isolated&&(live.length!==1||!live[0]?.id||!live[0]?.provider))throw Error('--isolated-job requires exactly one provider/game');
+const lock=isolated?path.join(base,'.locks','catalog-'+safeId(live[0].provider)+'-'+safeId(live[0].id)+'.lock'):path.join(base,'.capture.lock');
+await withLock(lock,run);

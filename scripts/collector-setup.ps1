@@ -7,6 +7,10 @@ param(
     [string]$Outbox = '',
     [string]$BrowserPath = '',
     [switch]$ConfirmAdult,
+    [switch]$DynamicWorkers,
+    [string]$ProviderSources = '',
+    [int]$MaxWorkers = 5,
+    [int]$BrowserWorkers = 3,
     [switch]$ConfigureTokens
 )
 $ErrorActionPreference = 'Stop'
@@ -52,6 +56,9 @@ if (-not (Test-Path -LiteralPath $configFile -PathType Leaf)) {
         elseif ($env:LOCALAPPDATA) { $BrowserPath = Join-Path $env:LOCALAPPDATA 'ms-playwright' }
         else { $BrowserPath = '' }
     }
+    if ($MaxWorkers -lt 1 -or $MaxWorkers -gt 24 -or $BrowserWorkers -lt 1 -or $BrowserWorkers -gt 8) {
+        throw 'MaxWorkers debe ser 1..24 y BrowserWorkers 1..8.'
+    }
     $config = @{
         manifest=[IO.Path]::GetFullPath($manifestPath)
         outbox=[IO.Path]::GetFullPath($Outbox)
@@ -62,6 +69,10 @@ if (-not (Test-Path -LiteralPath $configFile -PathType Leaf)) {
         har='all'
         speed=1
         adultConfirmed=[bool]$ConfirmAdult
+        dynamicWorkers=[bool]$DynamicWorkers
+        providerSourcesPath=$(if($ProviderSources){(Resolve-Path -LiteralPath $ProviderSources -ErrorAction Stop).Path}else{Join-Path $repo 'examples/provider-sources.json'})
+        maxWorkers=$MaxWorkers
+        browserWorkers=$BrowserWorkers
     }
     [IO.File]::WriteAllText($configFile,($config | ConvertTo-Json -Depth 5),$utf8)
     Write-Host "Configuracion local creada para runId=$RunId."

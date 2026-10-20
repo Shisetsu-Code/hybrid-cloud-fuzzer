@@ -1,8 +1,16 @@
 # Hybrid Cloud Fuzzer
 
-Fast **multi-provider** visual/control classifier for public game demos. It is **not** a game engine, automatic player, gambling bot or real-money casino client. No spins, payments or purchases are performed by this project.
+Fast **multi-provider** visual/control classifier and reviewed branch explorer for public game demos. It is **not** a real-money casino client. The local executor may click *reviewed* public-DEMO purchase controls and record sanitized network evidence; it never uses real-money accounts or payment credentials.
 
 **[Controls from runtime/DOM] → D1 → MCP → decisions**. If the controls are inaccessible or unreliable: **[JPEG → private R2] → MCP vision → normalized marks**. Both paths share the same queue, locks and output contract.
+
+## Dynamic workforce (discovery, catalogue, classification, branches)
+
+A **D1-backed workforce control plane** and local adaptive worker supervisor are available. It assigns bounded agent slots to discovery of operator-approved public-demo catalogues, per-game capture, high-confidence structured classification, and reviewed branch execution. Each game and provider can progress independently; leases, retries and idempotent task IDs prevent losing work on crashes.
+
+This opt-in mode requires additive D1 migration **0003_dynamic_workforce.sql** and a local Windows switch. Visual/hybrid classification still uses MCP vision reviewers; it is **not** silently delegated to a label-matching script. New providers require explicitly approved public sources and may need adapters.
+
+See **[Dynamic workforce deployment and operations](docs/DYNAMIC_WORKFORCE.md)** for architecture, commands, safety limits and status.
 
 ## Provider support
 

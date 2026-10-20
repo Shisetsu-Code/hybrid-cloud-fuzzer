@@ -1,4 +1,7 @@
-param([ValidateSet('Menu','Start','Stop','Status')][string]$Action = 'Menu')
+param(
+    [ValidateSet('Menu','Start','Stop','Status')][string]$Action = 'Menu',
+    [switch]$DynamicWorkers
+)
 $ErrorActionPreference = 'Stop'
 $script:repo = Split-Path $PSScriptRoot -Parent
 $script:worker = Join-Path $PSScriptRoot 'collector-worker.ps1'
@@ -21,7 +24,7 @@ function Save-CollectorRecord([hashtable]$Record) {
     [IO.File]::WriteAllText($temporary,$json,(New-Object System.Text.UTF8Encoding($false)))
     Move-Item -LiteralPath $temporary -Destination $script:stateFile -Force
 }
-function Get-ManagedWorker([ValidateSet('Capture','Sync','Branches')][string]$Role,[hashtable]$Record) {
+function Get-ManagedWorker([ValidateSet('Capture','Sync','Branches','Workforce')][string]$Role,[hashtable]$Record) {
     $key = $Role.ToLowerInvariant()
     $workerId = $Record[$key + 'Pid']
     $created = $Record[$key + 'StartedAt']
@@ -37,9 +40,14 @@ function Get-CollectorStatus {
     $capture = Get-ManagedWorker -Role Capture -Record $record
     $sync = Get-ManagedWorker -Role Sync -Record $record
     $branches = Get-ManagedWorker -Role Branches -Record $record
+    $workforce = Get-ManagedWorker -Role Workforce -Record $record
     $configPresent = Test-Path -LiteralPath $script:settingsFile -PathType Leaf
     $secretsPresent = Test-Path -LiteralPath (Join-Path $script:repo '.wrangler/deployment-secrets.xml') -PathType Leaf
-    return [PSCustomObject]@{captureRunning=[bool]$capture;syncRunning=[bool]$sync;branchesRunning=[bool]$branches;branchesPid=$(if($branches){$branches.ProcessId}else{$null});capturePid=$(if($capture){$capture.ProcessId}else{$null});syncPid=$(if($sync){$sync.ProcessId}else{$null});configPresent=[bool]$configPresent;secretsPresent=[bool]$secretsPresent}
+    $isDynamic = $false
+    if ($configPresent) {
+        try { $isDynamic = ((Get-Content -Raw -LiteralPath $script:settingsFile | ConvertFrom-Json).dynamicWorkers -eq $true) } catch {}
+    }
+    return [PSCustomObject]@{captureRunning=[bool]$capture;syncRunning=[bool]$sync;branchesRunning=[bool]$branches;workforceRunning=[bool]$workforce;workforcePid=$(if($workforce){$workforce.ProcessId}else{$null});dynamicWorkersConfigured=[bool]$isDynamic;branchesPid=$(if($branches){$branches.ProcessId}else{$null});capturePid=$(if($capture){$capture.ProcessId}else{$null});syncPid=$(if($sync){$sync.ProcessId}else{$null});configPresent=[bool]$configPresent;secretsPresent=[bool]$secretsPresent}
 }
 function Start-Collector {
     if (-not (Test-Path -LiteralPath $script:settingsFile -PathType Leaf)) {
@@ -59,8 +67,20 @@ function Start-Collector {
     } catch { throw 'Las credenciales DPAPI locales no son legibles por este usuario; recupera los tokens existentes en lugar de rotarlos automaticamente.' }
     Remove-Variable localSecrets
     $record = Read-CollectorRecord
+    if ($DynamicWorkers -and $config.dynamicWorkers -ne $true) {
+        # Mode changes require an explicit Stop. Never launch two branch runners.
+        if ((Get-ManagedWorker -Role Branches -Record $record) -or (Get-ManagedWorker -Role Capture -Record $record)) {
+            throw 'Deten los procesos legados con -Action Stop antes de activar -DynamicWorkers.'
+        }
+        $config | Add-Member -NotePropertyName dynamicWorkers -NotePropertyValue $true -Force
+        [IO.File]::WriteAllText($script:settingsFile,($config | ConvertTo-Json -Depth 8),(New-Object System.Text.UTF8Encoding($false)))
+    }
+    if (($config.dynamicWorkers -ne $true) -and (Get-ManagedWorker -Role Workforce -Record $record)) {
+        throw 'Deten Workforce antes de volver al modo legado.'
+    }
     $hostPath = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
-    foreach ($role in @('Sync','Branches','Capture')) {
+    $roles = if ($config.dynamicWorkers -eq $true) { @('Sync','Workforce') } else { @('Sync','Branches','Capture') }
+    foreach ($role in $roles) {
         if (Get-ManagedWorker -Role $role -Record $record) { continue }
         $key = $role.ToLowerInvariant()
         if ($record[$key+'Pid'] -and (Get-Process -Id ([int]$record[$key+'Pid']) -ErrorAction SilentlyContinue)) { throw 'Un PID guardado pertenece a otro proceso; no se modifico.' }
@@ -75,7 +95,7 @@ function Start-Collector {
 }
 function Stop-Collector {
     $record = Read-CollectorRecord
-    foreach ($role in @('Branches','Capture','Sync')) {
+    foreach ($role in @('Workforce','Branches','Capture','Sync')) {
         $process = Get-ManagedWorker -Role $role -Record $record
         $key = $role.ToLowerInvariant()
         if ($process) {
@@ -123,9 +143,13 @@ function Show-CollectorMenu {
     $form.Controls.AddRange(@($start,$stop,$close))
     $refresh = {
         try { $status = Get-CollectorStatus
-            $label.Text = 'Captura: ' + $(if($status.captureRunning){'en marcha'}else{'detenida'}) + "`r`n" + 'Sincronizacion: ' + $(if($status.syncRunning){'en marcha'}else{'detenida'}) + "`r`n" + 'Ramas: ' + $(if($status.branchesRunning){'en marcha'}else{'detenida'})
-            $start.Enabled = -not ($status.captureRunning -and $status.syncRunning -and $status.branchesRunning)
-            $stop.Enabled = $status.captureRunning -or $status.syncRunning -or $status.branchesRunning
+            if ($status.dynamicWorkersConfigured) {
+                $label.Text = 'Workers dinamicos: ' + $(if($status.workforceRunning){'en marcha'}else{'detenidos'}) + "`r`n" + 'Sincronizacion: ' + $(if($status.syncRunning){'en marcha'}else{'detenida'})
+            } else {
+                $label.Text = 'Captura: ' + $(if($status.captureRunning){'en marcha'}else{'detenida'}) + "`r`n" + 'Sincronizacion: ' + $(if($status.syncRunning){'en marcha'}else{'detenida'}) + "`r`n" + 'Ramas: ' + $(if($status.branchesRunning){'en marcha'}else{'detenida'})
+            }
+            $start.Enabled = if($status.dynamicWorkersConfigured){-not ($status.workforceRunning -and $status.syncRunning)}else{-not ($status.captureRunning -and $status.syncRunning -and $status.branchesRunning)}
+            $stop.Enabled = $status.workforceRunning -or $status.captureRunning -or $status.syncRunning -or $status.branchesRunning
         } catch { $label.Text = 'Error al consultar el estado.' }
     }
     $start.Add_Click({ try { Invoke-CollectorAction 'Start'; & $refresh } catch { [Windows.Forms.MessageBox]::Show($_.Exception.Message,'Recopilador') | Out-Null } })
