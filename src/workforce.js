@@ -112,6 +112,25 @@ export async function finishWork(env,{id,workerId,leaseToken,ok,result=null,erro
  if(!row)throw new InputError('stale job lease',409);
  return publicJob(row);
 }
+// Return unstarted work without exhausting retry attempts (e.g. provider pacing
+// has no available session, or the GitHub runner is approaching its deadline).
+// The exact current D1 lease is required: another worker cannot defer this job.
+export async function deferWork(env,{id,workerId,leaseToken,delaySeconds=15}={}){
+ if(typeof id!=='string'||!id||id.length>390)throw new InputError('invalid job ID');
+ valid(workerId,workerPattern,'workerId');
+ if(typeof leaseToken!=='string'||leaseToken.length>100)throw new InputError('invalid lease token');
+ positive(delaySeconds,0,900,'delaySeconds');
+ await requireWorkforce(env);
+ const current=nowSec();
+ const row=await env.DB.prepare(
+  "UPDATE workforce_jobs SET status='pending',available_at=?,attempts=MAX(0,attempts-1),"+
+  "lease_token=NULL,lease_owner=NULL,lease_until=NULL,updated_at=datetime('now') "+
+  "WHERE id=? AND status='leased' AND lease_owner=? AND lease_token=? AND lease_until>? RETURNING *")
+  .bind(current+delaySeconds,id,workerId,leaseToken,current).first();
+ if(!row)throw new InputError('stale job lease',409);
+ return publicJob(row);
+}
+
 export async function agentHeartbeat(env,{runId,workerId,role,host='local',capacity=1}={}){
  valid(runId,keyPattern,'runId');valid(workerId,workerPattern,'workerId');validRole(role,AGENT_ROLES);
  if(typeof host!=='string'||host.length<1||host.length>90||!/^[a-z0-9_.-]+$/i.test(host))throw new InputError('invalid worker host');
