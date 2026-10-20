@@ -50,5 +50,32 @@ export class CloudClient{
   const form=new FormData();form.set('metadata',JSON.stringify(item));form.set('image',new Blob([image],{type:'image/jpeg'}),`${item.shotId}.jpg`);
   return this.call('/v1/items',{role:'ingest',method:'POST',body:form});
  }
+ async workStats(runId){return this.call('/v1/work/stats?'+new URLSearchParams({runId}));}
+ async enqueueWork(runId,jobs){return this.call('/v1/work/jobs',{method:'POST',body:JSON.stringify({runId,jobs})});}
+ async claimWork(runId,role,workerId,{provider=null,leaseSeconds=900}={}){
+  return (await this.call('/v1/work/claim',{method:'POST',body:JSON.stringify({runId,role,workerId,provider,leaseSeconds})})).job;
+ }
+ async renewWork(job,workerId,leaseSeconds=900){
+  return (await this.call('/v1/work/renew',{method:'POST',
+   body:JSON.stringify({id:job.id,workerId,leaseToken:job.leaseToken,leaseSeconds})})).job;
+ }
+ async finishWork(job,workerId,{ok,result=null,error=null}={}){
+  return (await this.call('/v1/work/finish',{method:'POST',
+   body:JSON.stringify({id:job.id,workerId,leaseToken:job.leaseToken,ok,result,error})})).job;
+ }
+ async agentHeartbeat(runId,workerId,role,host='local'){
+  return this.call('/v1/work/agent',{method:'POST',body:JSON.stringify({runId,workerId,role,host})});
+ }
+ async claimStructured(runId,leaseSeconds=900){
+  return (await this.call('/v1/claim',{method:'POST',body:JSON.stringify({runId,mode:'structured',leaseSeconds})})).item;
+ }
+ async saveStructured(item,decision,reviewer='auto-structured-v1'){
+  return (await this.call('/v1/save',{method:'POST',body:JSON.stringify({id:item.id,leaseId:item.leaseId,
+   revision:item.revision,sourceSha256:item.sourceSha256,status:decision.status,
+   selections:decision.selections||[],reviewer})})).item;
+ }
+ async releaseCapture(item){
+  return (await this.call('/v1/release',{method:'POST',body:JSON.stringify({id:item.id,leaseId:item.leaseId,revision:item.revision})})).item;
+ }
  async uploadTrace(data){return this.call('/v1/traces',{role:'ingest',method:'POST',body:JSON.stringify(data)});}
 }

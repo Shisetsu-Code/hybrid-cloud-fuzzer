@@ -52,12 +52,14 @@ export async function ingest(env,payload,image=null,{replace=false}={}){
   return publicItem(await env.DB.prepare('SELECT * FROM items WHERE id=?').bind(item.id).first());
 }
 export async function rawItem(env,id){if(typeof id!=='string'||id.length>400)throw new InputError('invalid ID');const r=await env.DB.prepare('SELECT * FROM items WHERE id=?').bind(id).first();if(!r)throw new InputError('capture not found',404);return r;}
-export async function claim(env,{runId=null,provider=null,leaseSeconds=180}={}){
+export async function claim(env,{runId=null,provider=null,mode=null,leaseSeconds=180}={}){
   if(!Number.isSafeInteger(leaseSeconds)||leaseSeconds<30||leaseSeconds>900)throw new InputError('leaseSeconds must be 30..900');
   if(runId&&!/^[a-z0-9][a-z0-9_.-]{0,99}$/i.test(runId))throw new InputError('invalid runId');
   if(provider&&!/^[a-z0-9][a-z0-9_.-]{0,99}$/i.test(provider))throw new InputError('invalid provider');
+  if(mode!==null&&!['structured','hybrid','visual'].includes(mode))throw new InputError('invalid capture mode');
   const filters=["(status='pending' OR (status='leased' AND lease_until<=?))"],bind=[Math.floor(Date.now()/1000)];
   if(runId){filters.push('run_id=?');bind.push(runId);}if(provider){filters.push('provider=?');bind.push(provider);}
+  if(mode){filters.push('mode=?');bind.push(mode);}
   const where=filters.join(' AND ');
   for(let i=0;i<4;i++){
     const lease=crypto.randomUUID(),now=Math.floor(Date.now()/1000);
