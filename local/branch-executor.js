@@ -1,6 +1,6 @@
 // Local Playwright-only public DEMO branch executor. Never runs on Cloudflare.
 import {bestFrame,screenshotBox} from './select-frame.js';
-import {openPublicDemo,dismissKnownIntro} from './intro.js';
+import {openPublicDemo,dismissKnownIntro,dismissCatalogueOverlays} from './intro.js';
 import {speedUpGame} from './speed.js';
 import {createNetworkRecorder,summarizeHar} from './har.js';
 import {chooseAction,resolveDemoUrl,classifyTrace,traceEndpoints} from './rounds.js';
@@ -27,6 +27,9 @@ export async function executeDemoBranch(task,source,{
   await page.goto(url,{waitUntil:'domcontentloaded'});
   await openDemo(page,{provider:task.provider,url,confirmAdult});
   await page.waitForTimeout(Math.min(waitMs*2,6000));
+  // The public catalogue CMP often appears only after the game iframe loads.
+  // Do not click the game while its site-level consent/age dialog is visible.
+  await dismissCatalogueOverlays(page,{provider:task.provider,url,confirmAdult,graceMs:450,requireClear:true});
   let observed=null;
   for(let i=0;i<task.path.length;i++){
    const step=task.path[i];
@@ -46,6 +49,8 @@ export async function executeDemoBranch(task,source,{
    }
    if(!position)throw Error(`reviewed control no longer matches game UI: ${step.state}/${step.label}`);
    if(speed>1)await speedUpGame(page,candidate.frame,speed);
+   // A delayed CMP can appear between extraction and the reviewed click.
+   await dismissCatalogueOverlays(page,{provider:task.provider,url,confirmAdult,requireClear:true});
    const absolute=screenPoint(position,shot,page.viewportSize());
    // Network observation is scoped to the clicked action, not loading/earlier branches.
    const last=i===task.path.length-1;
@@ -56,6 +61,8 @@ export async function executeDemoBranch(task,source,{
    if(last)observed=await recorder.finish();recorder=null;
    log(`CLICK ${task.gameId} ${i+1}/${task.path.length}: ${step.kind} ${step.label}`);
   }
+  // Clear late catalogue dialogs before inspecting/cropping the evidence JPEG.
+  await dismissCatalogueOverlays(page,{provider:task.provider,url,confirmAdult,graceMs:350,requireClear:true});
   const result=await inspect(page,task.provider);
   if(!result)throw Error('game frame disappeared after reviewed action');
   const box=await frameBox(page,result.frame);
