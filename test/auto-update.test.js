@@ -28,8 +28,9 @@ test('Cloudflare deployment is restricted to main and migrations precede deploym
  assert.match(file,/secrets\.CLOUDFLARE_ACCOUNT_ID/);
  assert.ok(file.indexOf('wrangler d1 migrations apply')>file.indexOf('npm test'));
  assert.ok(file.indexOf('wrangler deploy')>file.indexOf('wrangler d1 migrations apply'));
- assert.match(file,/schemaVersion\s*>=\s*3/);
+ assert.match(file,/schemaVersion\s*>=\s*4/);
  assert.match(file,/workforceReady\s*==\s*true/);
+ assert.match(file,/pacingReady\s*==\s*true/);
 });
 test('managed controller and updater scripts parse as Windows PowerShell',{
  skip:process.platform!=='win32'},()=>{
