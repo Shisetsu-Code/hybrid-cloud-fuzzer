@@ -56,12 +56,12 @@ jobs:
         run: |
           for attempt in $(seq 1 12); do
             if curl --fail --silent --show-error --max-time 12 "$HEALTH_URL" -o /tmp/hybrid-health.json; then
-              if jq -e '.ok == true and .schemaVersion >= 3 and .workforceReady == true' /tmp/hybrid-health.json >/dev/null; then
-                echo "Production healthy; D1 schema >= 3 and workforce tables present"
+              if jq -e '.ok == true and .schemaVersion >= 4 and .workforceReady == true and .pacingReady == true' /tmp/hybrid-health.json >/dev/null; then
+                echo "Production healthy; D1 schema >= 4, workforce and provider pacing ready"
                 exit 0
               fi
             fi
             sleep 5
           done
-          echo "::error::Production deployment is not healthy at schema >= 3"
+          echo "::error::Production deployment is not healthy at schema >= 4 with provider pacing"
           exit 1
