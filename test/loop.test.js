@@ -43,7 +43,7 @@ test('each game executes only one sibling branch per polling cycle with durable 
 });
 test('one game waits while its own new child remains unclassified',async()=>{
  const dir=await temp();try{
-  const controller=new LoopController({runId:'r',outDir:dir,cloud:{stats:async()=>({pending:1,leased:0,needs_review:0,classified:1}),blockedGames:async()=>new Set(['pragmatic/alpha']),allDecisions:async()=>feed},executor:async()=>{throw Error('should wait')}});
+  const controller=new LoopController({runId:'r',outDir:dir,cloud:{stats:async()=>({pending:1,leased:0,needs_review:0,classified:1}),blockedGames:async()=>new Set(['pragmatic/alpha']),allDecisions:async()=>feed,item:async()=>item},executor:async()=>{throw Error('should wait')}});
   const answer=await controller.once();assert.equal(answer.waiting,true);
  }finally{await fs.rm(dir,{recursive:true,force:true});}
 });
