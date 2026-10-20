@@ -13,6 +13,21 @@ function fixture({withoutTraces=false}={}){
   return {env:{DB,IMAGES,INGEST_TOKEN:'ingest-test',REVIEW_TOKEN:'review-test',MCP_TOKEN:'mcp-test'},images,close:()=>sqlite.close()};
 }
 const JPEG=new Uint8Array([255,216,1,2,3,4,255,217]);
+test('progress is private, run-scoped and observational',async()=>{
+ const f=fixture();
+ try{
+  await upload(f.env,imageItem({runId:'progress-a',gameId:'alpha'}));
+  await upload(f.env,imageItem({runId:'progress-b',gameId:'beta'}));
+  const before=await f.env.DB.prepare('SELECT COUNT(*) AS n FROM items').first();
+  const url='https://worker.example/v1/progress?runId=progress-a';
+  assert.equal((await worker.fetch(new Request(url),f.env)).status,401);
+  const res=await worker.fetch(new Request(url,{headers:{Authorization:'Bearer review-test'}}),f.env);
+  assert.equal(res.status,200);const report=await res.json();
+  assert.deepEqual(report.games.map(g=>g.gameId),['alpha']);
+  assert.equal(report.games[0].pending,1);assert.equal(report.games[0].finished,false);
+  assert.deepEqual(await f.env.DB.prepare('SELECT COUNT(*) AS n FROM items').first(),before);
+ }finally{f.close();}
+});
 const candidate={id:'c0',label:'BUY FEATURE',source:'runtime',role:'button',confidence:0.93,rect:{x:0.2,y:0.3,w:0.2,h:0.2},path:'GameRoot/BuyFeature/Collider'};
 const item=(other={})=>({runId:'test-run',provider:'pragmatic',gameId:'demo-a',shotId:'base',state:'BASE',mode:'structured',adapter:'pragmatic-runtime',candidates:[candidate],metadata:{demo:true},...other});
 async function request(env,path,payload,token='review-test'){

@@ -1,7 +1,7 @@
 // Only dismiss a verified Pragmatic public DEMO intro; never click in unknown providers.
 const KNOWN=/\/IntroScreen\/.*(?:\/StartSpin_Button|\/CloseButton\/ButtonSpin)$/i;
 const REJECT=/^reject all$|^rechazar todo$/i;
-export const isCatalogueOverlayAction=action=>/reject\s+all|rechazar\s+todo|cookies?|consent\s+overlay|privacy\s+(?:notice|dialog)|age\s+gate/i.test((action?.label||'')+' '+(action?.controlPath||''));
+export {isCatalogueOverlayAction} from '../src/action-plan.js';
 
 function demoTarget(page,provider,url){
  if(provider!=='pragmatic'||typeof url!=='string')return false;

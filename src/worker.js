@@ -2,6 +2,7 @@ import {InputError,ingest,claim,save,release,rawItem,publicItem,stats,gameBlocke
 import {handleMcp} from './mcp.js';
 import {recordTrace,retrieveTrace} from './traces.js';
 import {enqueueWork,claimWork,renewWork,finishWork,agentHeartbeat,workforceStats} from './workforce.js';
+import {progressReport} from './progress.js';
 
 function eqSecret(a,b){
   if(typeof a!=='string'||typeof b!=='string'||!a||!b)return false;
@@ -78,6 +79,7 @@ export default {
         if(p==='/v1/save'&&request.method==='POST')return json({item:await save(env,await readJSON(request))});
         if(p==='/v1/release'&&request.method==='POST')return json({item:await release(env,await readJSON(request))});
         if(p==='/v1/stats'&&request.method==='GET')return json(await stats(env,{runId:url.searchParams.get('runId'),provider:url.searchParams.get('provider')}));
+        if(p==='/v1/progress'&&request.method==='GET')return json(await progressReport(env,{runId:url.searchParams.get('runId')}));
         if(p==='/v1/game-blockers'&&request.method==='GET')return json(await gameBlockers(env,{runId:url.searchParams.get('runId'),after:url.searchParams.get('after')||'',limit:Number(url.searchParams.get('limit')||200)}));
         const traceMatch=/^\/v1\/traces\/([a-f0-9]{64})$/i.exec(p);
         if(traceMatch&&request.method==='GET')return json(await retrieveTrace(env,traceMatch[1]));
