@@ -153,20 +153,57 @@ function Show-CollectorMenu {
     Add-Type -AssemblyName System.Drawing
     [Windows.Forms.Application]::EnableVisualStyles()
     $form = New-Object Windows.Forms.Form
-    $form.Text = 'Recopilador Hybrid Fuzzer'; $form.ClientSize = New-Object Drawing.Size(470,250)
+    $form.Text = 'Recopilador Hybrid Fuzzer'; $form.ClientSize = New-Object Drawing.Size(1140,820)
     $form.StartPosition = 'CenterScreen'; $form.FormBorderStyle = 'FixedDialog'; $form.MaximizeBox = $false
     $label = New-Object Windows.Forms.Label
     $label.Location = New-Object Drawing.Point(24,22); $label.Size = New-Object Drawing.Size(420,76)
     $label.Font = New-Object Drawing.Font('Segoe UI',12)
     $form.Controls.Add($label)
     $note = New-Object Windows.Forms.Label
-    $note.Location = New-Object Drawing.Point(24,160); $note.Size = New-Object Drawing.Size(420,54)
-    $note.Text = "Se conserva el progreso al detener y reanudar.`r`nCerrar esta ventana deja el recopilador funcionando."
+    $note.Location = New-Object Drawing.Point(24,150); $note.Size = New-Object Drawing.Size(1090,50)
+    $note.Text = "Cerrar esta ventana deja el motor funcionando. Progreso de Cloudflare cada 30 segundos.`r`nCompras/Ante/Elecciones = controles clasificados distintos. Finalizado = peticion DEMO observada, sin pendientes ni bloqueos; no valida el juego completo."
     $form.Controls.Add($note)
     $start = New-Object Windows.Forms.Button; $start.Text = 'Iniciar'; $start.Location = New-Object Drawing.Point(24,95); $start.Size = New-Object Drawing.Size(130,44)
     $stop = New-Object Windows.Forms.Button; $stop.Text = 'Detener'; $stop.Location = New-Object Drawing.Point(170,95); $stop.Size = New-Object Drawing.Size(130,44)
     $close = New-Object Windows.Forms.Button; $close.Text = 'Cerrar'; $close.Location = New-Object Drawing.Point(316,95); $close.Size = New-Object Drawing.Size(130,44)
     $form.Controls.AddRange(@($start,$stop,$close))
+    $progressLabel = New-Object Windows.Forms.Label
+    $progressLabel.Location = New-Object Drawing.Point(24,205); $progressLabel.Size = New-Object Drawing.Size(1090,25)
+    $progressLabel.Text = 'Consultando progreso de Cloudflare...'; $form.Controls.Add($progressLabel)
+    function New-ProgressGrid($columns,$y,$height) {
+        $grid = New-Object Windows.Forms.DataGridView
+        $grid.Location = New-Object Drawing.Point(24,$y); $grid.Size = New-Object Drawing.Size(1090,$height)
+        $grid.ReadOnly = $true; $grid.AllowUserToAddRows = $false; $grid.AllowUserToDeleteRows = $false
+        $grid.RowHeadersVisible = $false; $grid.AutoSizeColumnsMode = 'Fill'; $grid.SelectionMode = 'FullRowSelect'
+        foreach ($column in $columns) { $null = $grid.Columns.Add($column[0],$column[1]) }
+        $form.Controls.Add($grid)
+        return ,$grid
+    }
+    $providerColumns = @(@('provider','Proveedor'),@('total','Juegos'),@('processed','Procesados'),@('finished','Finalizados'),@('unfinished','Sin finalizar'),@('pending','Pendientes'),@('review','Revision'),@('buys','Compras'),@('anteBets','Ante bet'),@('choices','Elecciones'))
+    $providerGrid = New-ProgressGrid $providerColumns 235 140
+    $filterLabel = New-Object Windows.Forms.Label
+    $filterLabel.Text = 'Filtrar proveedor o juego:'; $filterLabel.Location = New-Object Drawing.Point(24,391); $filterLabel.Size = New-Object Drawing.Size(180,25)
+    $form.Controls.Add($filterLabel)
+    $filter = New-Object Windows.Forms.TextBox
+    $filter.Location = New-Object Drawing.Point(210,388); $filter.Size = New-Object Drawing.Size(430,25); $form.Controls.Add($filter)
+    $gameColumns = @(@('provider','Proveedor'),@('gameId','Juego'),@('state','Estado'),@('captures','Capturas'),@('classified','Clasificadas'),@('pending','Pendientes'),@('review','Revision'),@('buys','Compras'),@('anteBets','Ante bet'),@('choices','Elecciones'),@('navigation','Continuar'),@('other','Otros'),@('executed','Ramas hechas'),@('remainingActions','Ramas pendientes'),@('blocked','Bloqueos'),@('uncertain','Inciertas'))
+    $gameGrid = New-ProgressGrid $gameColumns 430 365
+    $gameGrid.AutoSizeColumnsMode = 'None'
+    foreach ($column in $gameGrid.Columns) { $column.Width = 88 }
+    $gameGrid.Columns['provider'].Width = 100; $gameGrid.Columns['gameId'].Width = 245; $gameGrid.Columns['state'].Width = 245
+    $gameGrid.Columns['provider'].Frozen = $true; $gameGrid.Columns['gameId'].Frozen = $true
+    $gameGrid.ColumnHeadersHeight = 44
+    $form.Tag = @{lastFetch=[datetime]::MinValue;lastVersion='';report=$null;progressProcess=$null}
+    $renderGames = {
+        $gameGrid.Rows.Clear()
+        $term = $filter.Text.Trim()
+        foreach ($game in $form.Tag.report.games) {
+            if ($term -and ($game.provider+'/'+$game.gameId).IndexOf($term,[StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
+            $values = @($gameColumns | ForEach-Object { $game.($_[0]) })
+            $null = $gameGrid.Rows.Add([object[]]$values)
+        }
+    }
+    $filter.Add_TextChanged({ & $renderGames })
     $refresh = {
         try { $status = Get-CollectorStatus
             if ($status.dynamicWorkersConfigured) {
@@ -176,6 +213,29 @@ function Show-CollectorMenu {
             }
             $start.Enabled = if($status.dynamicWorkersConfigured){-not ($status.workforceRunning -and $status.syncRunning)}else{-not ($status.captureRunning -and $status.syncRunning -and $status.branchesRunning)}
             $stop.Enabled = $status.updaterRunning -or $status.workforceRunning -or $status.captureRunning -or $status.syncRunning -or $status.branchesRunning
+            $progressFile = Join-Path $script:repo '.local-state/collector-progress.json'
+            if (Test-Path -LiteralPath $progressFile) {
+                $report = Get-Content -Raw -LiteralPath $progressFile | ConvertFrom-Json
+                if ($form.Tag.lastVersion -ne $report.updatedAt) {
+                    $form.Tag.report = $report; $form.Tag.lastVersion = $report.updatedAt
+                    $providerGrid.Rows.Clear()
+                    foreach ($provider in $report.providers) {
+                        $values = @($providerColumns | ForEach-Object { $provider.($_[0]) })
+                        $null = $providerGrid.Rows.Add([object[]]$values)
+                    }
+                    & $renderGames
+                }
+                $progressLabel.Text = 'Tanda: '+$report.runId+' | Actualizado: '+$report.updatedAt+' | Juegos: '+$report.games.Count
+            }
+            $errorFile = Join-Path $script:repo '.local-state/collector-progress-error.txt'
+            if (Test-Path -LiteralPath $errorFile) { $progressLabel.Text = 'Progreso sin actualizar: '+(Get-Content -Raw -LiteralPath $errorFile) }
+            $progressProcess = $form.Tag.progressProcess
+            if (((Get-Date)-$form.Tag.lastFetch).TotalSeconds -ge 30 -and (-not $progressProcess -or $progressProcess.HasExited)) {
+                $hostPath = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
+                $progressScript = Join-Path $PSScriptRoot 'collector-progress.ps1'
+                $form.Tag.progressProcess = Start-Process -FilePath $hostPath -ArgumentList @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',('"'+$progressScript+'"')) -WindowStyle Hidden -WorkingDirectory $script:repo -PassThru
+                $form.Tag.lastFetch = Get-Date
+            }
         } catch { $label.Text = 'Error al consultar el estado.' }
     }
     $start.Add_Click({ try { Invoke-CollectorAction 'Start'; & $refresh } catch { [Windows.Forms.MessageBox]::Show($_.Exception.Message,'Recopilador') | Out-Null } })

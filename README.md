@@ -274,6 +274,16 @@ saves the sanitized HAR locally. Use a DEMO tab only; do not record accounts.
 
 ## 4. Round continuation: reviewed buttons -> branches -> next classifier batch
 
+The Windows control panel includes provider totals and a searchable game table.
+It reads private `/v1/progress?runId=...` data every 30 seconds while open and
+combines it with this run's local branch journal. Purchases, ante bet, choices,
+continuations and other controls count distinct reviewed labels, not wagers.
+Executed and remaining branches are separate counters. A game is marked finished
+only when a DEMO request was observed and no classification, review, execution,
+blocked or uncertain branch remains. This is not a claim of complete game validation.
+The panel never clears history or changes classifications; closing it stops its
+status polling without stopping the collector. Git auto-updates remain opt-in.
+
 The **collector** remains read-only; the separate `local/round-runner.mjs` executes **reviewed actions on public DEMO games only**. Cloudflare is the private decision and evidence queue; it does not run a browser or real-money wagers.
 
 The Windows **Recopilador Hybrid Fuzzer** controller now launches a third managed worker named `Branches` alongside `Capture` and `Sync`. The `Branches` worker requires both `INGEST_TOKEN` and `REVIEW_TOKEN` already stored in `.wrangler/deployment-secrets.xml`. A `git pull` alone **does not restart** an existing local worker. Stop and restart it from the controller after updating the code. Existing DPAPI secrets are preserved.

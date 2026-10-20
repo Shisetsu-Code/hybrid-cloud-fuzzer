@@ -3,21 +3,12 @@ import {createHash} from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {safeHttps,writeAtomic,readJSON} from './utils.js';
-import {isCatalogueOverlayAction} from './intro.js';
+import {reviewedAction,eligibleReviewedPath,isNormalClick} from '../src/action-plan.js';
 
 const digest=v=>createHash('sha256').update(String(v)).digest('hex');
-const validAction=new Set(['buy','navigate','pick','other']);
-const isNormalClick=a=>validAction.has(a.kind)&&Number.isFinite(a.x)&&Number.isFinite(a.y)&&a.x>=0&&a.x<=1&&a.y>=0&&a.y<=1;
-const keyOfAction=a=>`${a.state}|${String(a.controlPath||a.label||'').toLowerCase()}|${a.kind}`;
 export function roundReady(counts){return Boolean(counts)&&Number(counts.pending||0)===0&&Number(counts.leased||0)===0&&Number(counts.needs_review||0)===0;}
 export function makeTask(item,index){
- if(item?.status!=='classified'||!item?.sourceSha256||!Number.isInteger(item.revision))throw Error('decision must be classified with current revision');
- const selection=item.decisions?.allMarks?.[index];if(!isNormalClick(selection))throw Error('invalid classified action');
- const chosen=item.decisions?.selections?.find(s=>s.kind===selection.kind&&s.label===selection.label&&s.x===selection.x&&s.y===selection.y);
- const candidateId=chosen?.candidateId||selection.candidateId;
- const candidate=candidateId?(item.candidates||[]).find(c=>c.id===candidateId):null;
- if(candidateId&&!candidate)throw Error('stale candidate');
- const action={kind:selection.kind,label:String(selection.label||candidate?.label||'').slice(0,140),x:selection.x,y:selection.y,state:item.state,...(candidate?.path?{controlPath:candidate.path}:{}),...(candidateId?{candidateId}:{})};
+ const action=reviewedAction(item,index);
  const ancestors=item.metadata?.actionPath||[];if(!Array.isArray(ancestors)||ancestors.length>20)throw Error('invalid ancestry');
  const actionPath=[...ancestors,action];
  const hash=digest(JSON.stringify([item.id,item.revision,item.sourceSha256,index,actionPath]));
@@ -29,17 +20,10 @@ export function collectTasks(items,known=new Set(),{maxDepth=7,maxTasks=2000,all
  const tasks=[];for(const item of items){
   if(item?.status!=='classified'||item.metadata?.terminal===true)continue;
   const prev=item.metadata?.actionPath||[];
-  if(prev.some(isCatalogueOverlayAction))continue;
   if(prev.length>=maxDepth)continue;
   for(let i=0;i<(item.decisions?.allMarks||[]).length;i++){
    let task;try{task=makeTask(item,i);}catch{continue;}
-   const last=task.path.at(-1),label=(last.label||'')+' '+(last.controlPath||'');
-   if(/AutoPlay|Settings|Gear|SoundToggle|HelpButton|MenuButton/i.test(label))continue;
-   // Catalogue-level cookies and age dialogs are handled by Playwright,
-   // not classified as branches to replay inside the game iframe.
-   if(isCatalogueOverlayAction(last))continue;
-   if(!allowNormalSpin&&last.state==='BASE'&&/(?:Spin[_/-]?Normal|Normal[_/-]?Spin|AutoSpin|SpinButton)/i.test(label))continue;
-   if(prev.some(a=>keyOfAction(a)===keyOfAction(last)))continue;
+   if(!eligibleReviewedPath(task.path.at(-1),prev,{maxDepth,allowNormalSpin}))continue;
    if(known.has(task.id))continue;
    tasks.push(task);if(tasks.length>=maxTasks)return tasks;
   }
