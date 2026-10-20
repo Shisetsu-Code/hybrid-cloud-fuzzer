@@ -33,6 +33,9 @@ export function collectTasks(items,known=new Set(),{maxDepth=7,maxTasks=2000,all
    let task;try{task=makeTask(item,i);}catch{continue;}
    const last=task.path.at(-1),label=(last.label||'')+' '+(last.controlPath||'');
    if(/AutoPlay|Settings|Gear|SoundToggle|HelpButton|MenuButton/i.test(label))continue;
+   // Catalogue-level cookies and age dialogs are handled by Playwright,
+   // not classified as branches to replay inside the game iframe.
+   if(/reject\s+all|rechazar\s+todo|cookies?|consent\s+overlay|privacy\s+(?:notice|dialog)|age\s+gate/i.test(label))continue;
    if(!allowNormalSpin&&last.state==='BASE'&&/(?:Spin[_/-]?Normal|Normal[_/-]?Spin|AutoSpin|SpinButton)/i.test(label))continue;
    if(prev.some(a=>keyOfAction(a)===keyOfAction(last)))continue;
    if(known.has(task.id))continue;

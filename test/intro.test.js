@@ -16,8 +16,14 @@ test('never click unknown providers or multiple intro candidates',async()=>{
   assert.equal(result.dismissed,false);assert.equal(clicked,false);
 });
 function landingPage({hasDemo=false,attach=true,ageGate=false,currentUrl='https://www.pragmaticplay.fun/en/slots/game/'}={}){
- const clicks=[];let attached=hasDemo;
- const locator=name=>({count:async()=>name==='iframe'?Number(attached):name==='demo'?1:name==='reject'?1:name==='age'?Number(ageGate&&!attached):0,first(){return this;},isVisible:async()=>true,click:async()=>{clicks.push(name);if((name==='demo'&&!ageGate||name==='age')&&attach)attached=true;},waitFor:async()=>{if(name==='iframe'&&!attached)throw Error('demo not attached');}});
+ const clicks=[];let attached=hasDemo,cookieVisible=true;
+ const locator=name=>({count:async()=>name==='iframe'?Number(attached):name==='demo'?1:name==='reject'?Number(cookieVisible):name==='age'?Number(ageGate&&!attached):0,first(){return this;},isVisible:async()=>name==='reject'?cookieVisible:name==='age'?ageGate&&!attached:true,
+  click:async()=>{
+   clicks.push(name);
+   if(name==='reject')cookieVisible=false;
+   if(name==='demo')cookieVisible=true; // CMP can reappear when the demo iframe attaches.
+   if((name==='demo'&&!ageGate||name==='age')&&attach)attached=true;
+  },waitFor:async()=>{if(name==='iframe'&&!attached)throw Error('demo not attached');}});
  return {clicks,url:()=>currentUrl,locator:selector=>locator(selector.startsWith('iframe')?'iframe':selector.includes('data-age-gate-confirm')?'age':'none'),getByRole:(_role,{name})=>locator(name.test('Reject All')?'reject':name.test('Play Demo')?'demo':'none')};
 }
 test('Pragmatic landing opens its public demo before capture instead of queuing the catalog page',async()=>{

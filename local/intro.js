@@ -1,38 +1,73 @@
 // Only dismiss a verified Pragmatic public DEMO intro; never click in unknown providers.
 const KNOWN=/\/IntroScreen\/.*(?:\/StartSpin_Button|\/CloseButton\/ButtonSpin)$/i;
+const REJECT=/^reject all$|^rechazar todo$/i;
+
+function demoTarget(page,provider,url){
+ if(provider!=='pragmatic'||typeof url!=='string')return false;
+ let target;
+ try{target=new URL(url);}catch{return false;}
+ if(target.protocol!=='https:'||target.hostname!=='www.pragmaticplay.fun'||!/^\/en\/slots\/[a-z0-9-]+\/$/.test(target.pathname))return false;
+ const current=new URL(page.url());
+ if(current.origin!==target.origin||current.pathname!==target.pathname)throw Error('Public demo redirected to an unapproved destination');
+ return true;
+}
+
+// Site-level cookie/age dialogs live in the catalogue page outside the game iframe.
+// Fresh Chromium contexts can cause the CMP to reappear after the iframe has attached.
+// Reject *only* the known reject-all cookie button, never accept tracking consent,
+// and never click an age gate unless the operator authorized adulthood.
+export async function dismissCatalogueOverlays(page,{
+ provider,url,confirmAdult=false,graceMs=0,requireClear=false
+}={}){
+ const result={cookiesDismissed:0,ageConfirmed:false};
+ if(!demoTarget(page,provider,url))return result;
+ const cookie=page.getByRole('button',{name:REJECT}).first();
+ const age=page.locator('button[data-age-gate-confirm="true"]').first();
+ const visible=async locator=>await locator.count()>0&&await locator.isVisible();
+ const sweep=async()=>{
+  if(await visible(age)){
+   if(!confirmAdult)throw Error('Operator adult age confirmation required (--confirm-adult)');
+   demoTarget(page,provider,url);
+   await age.click({timeout:5000});
+   result.ageConfirmed=true;
+  }
+  if(await visible(cookie)){
+   demoTarget(page,provider,url);
+   await cookie.click({timeout:3000});
+   result.cookiesDismissed++;
+  }
+ };
+ await sweep();
+ if(graceMs>0){
+  if(page.waitForTimeout)await page.waitForTimeout(Math.min(graceMs,2000));
+  await sweep();
+ }
+ if(requireClear){
+  if(await visible(age))throw Error('Adult age gate still blocks the public DEMO');
+  if(await visible(cookie))throw Error('Cookie consent overlay still covers the game');
+ }
+ return result;
+}
 
 // Only the public catalogue's DEMO launcher, never a game purchase/spin button.
 export async function openPublicDemo(page,{provider,url,confirmAdult=false}={}){
-  const target=new URL(url);
-  if(provider!=='pragmatic'||target.protocol!=='https:'||target.hostname!=='www.pragmaticplay.fun'||!/^\/en\/slots\/[a-z0-9-]+\/$/.test(target.pathname))return {launched:false};
-  const verifyDestination=()=>{
-    const current=new URL(page.url());
-    if(current.origin!==target.origin||current.pathname!==target.pathname)throw Error('Public demo redirected to an unapproved destination');
-  };
-  verifyDestination();
-  const demo=page.locator('iframe[src*="demogamesfree.pragmaticplay.net"]');
-  const reject=async()=>{
-    const button=page.getByRole('button',{name:/^reject all$|^rechazar todo$/i}).first();
-    if(await button.count()&&await button.isVisible()){verifyDestination();await button.click({timeout:2500});}
-  };
-  if(await demo.count()){await reject();return {launched:false};}
-  const launch=page.getByRole('button',{name:/^play demo$|^jugar demo$|^probar demo$/i}).first();
-  await launch.waitFor({state:'visible',timeout:15000});
-  await reject();
-  verifyDestination();
-  await launch.click({timeout:10000});
-  const age=page.locator('button[data-age-gate-confirm="true"]').first();
-  if(await age.count()){
-    await age.waitFor({state:'visible',timeout:2500}).catch(()=>{});
-    if(await age.isVisible()){
-      if(!confirmAdult)throw Error('Operator adult age confirmation required (--confirm-adult)');
-      verifyDestination();
-      await age.click({timeout:5000});
-    }
-  }
-  await demo.first().waitFor({state:'visible',timeout:25000});
-  await reject();
-  return {launched:true};
+ if(!demoTarget(page,provider,url))return {launched:false};
+ const demo=page.locator('iframe[src*="demogamesfree.pragmaticplay.net"]');
+ if(await demo.count()){
+  await dismissCatalogueOverlays(page,{provider,url,confirmAdult});
+  return {launched:false};
+ }
+ const launch=page.getByRole('button',{name:/^play demo$|^jugar demo$|^probar demo$/i}).first();
+ await launch.waitFor({state:'visible',timeout:15000});
+ await dismissCatalogueOverlays(page,{provider,url,confirmAdult});
+ demoTarget(page,provider,url);
+ await launch.click({timeout:10000});
+ // The adult dialog may appear only *after* Play Demo was selected.
+ await dismissCatalogueOverlays(page,{provider,url,confirmAdult});
+ await demo.first().waitFor({state:'visible',timeout:25000});
+ // CMP can become visible after iframe initialization.
+ await dismissCatalogueOverlays(page,{provider,url,confirmAdult});
+ return {launched:true};
 }
 
 export function knownIntroCandidate(data){
