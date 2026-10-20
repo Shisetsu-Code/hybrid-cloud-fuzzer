@@ -6,7 +6,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {cli,safeId,safeHttps,readJSON,writeAtomic,RateLimiter,withLock} from './utils.js';
 import {bestFrame,screenshotBox} from './select-frame.js';
-import {dismissKnownIntro,openPublicDemo} from './intro.js';
+import {dismissKnownIntro,openPublicDemo,dismissCatalogueOverlays} from './intro.js';
 import {createNetworkRecorder,shouldSaveHar,saveSanitizedHar,validateHarMode} from './har.js';
 import {validateSpeed,speedUpGame} from './speed.js';
 const args=cli(process.argv.slice(2));
@@ -64,6 +64,8 @@ async function run(){
         // The CMP can appear after the game finishes loading. On an attached
         // demo this only rejects catalogue cookies; it never relaunches a game.
         await openPublicDemo(page,{provider,url,confirmAdult:args['confirm-adult']===true});
+        // A delayed catalogue CMP can cover the screenshot even when the iframe is ready.
+        await dismissCatalogueOverlays(page,{provider,url,confirmAdult:args['confirm-adult']===true,graceMs:450,requireClear:true});
         const {clip,aligned}=await screenshotBox(page,inspected.frame);
         const image=await page.screenshot({type:'jpeg',quality:imageQuality,...(clip?{clip}:{})});
         const width=Math.round(clip?.width||page.viewportSize().width),height=Math.round(clip?.height||page.viewportSize().height);
