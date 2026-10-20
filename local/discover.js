@@ -10,10 +10,29 @@ function publicUrl(raw){
  if(forbidden.test(host)||!host.includes('.')||/^\d+\.\d+\.\d+\.\d+$/.test(host)||host.includes(':'))throw Error('non-public catalogue host rejected');
  return url;
 }
+// Deterministic ID for a time-bucketed provider scan, shared by the producer
+// and the consumer. The original source.id remains unchanged in job payloads.
+export function discoveryTicketSubject(sourceId,bucket){
+ if(!slug.test(sourceId||'')||sourceId.length>75)throw Error('discovery source id must be <=75 characters');
+ if(!Number.isSafeInteger(bucket)||bucket<0)throw Error('invalid discovery bucket');
+ return sourceId+'-'+bucket;
+}
+export function validateDiscoveryTicket(job){
+ const source=job?.payload?.source;
+ const config=validateDiscoverySource(source);
+ const subject=String(job?.subject||'');
+ const prefix=config.id+'-';
+ const suffix=subject.startsWith(prefix)?subject.slice(prefix.length):'';
+ if(config.provider!==job.provider||!/^\\d{1,12}$/.test(suffix)||
+  discoveryTicketSubject(config.id,Number(suffix))!==subject)
+  throw Error('discovery identity mismatch');
+ return source;
+}
+
 export function validateDiscoverySource(source){
  if(!source||typeof source!=='object'||Array.isArray(source))throw Error('provider source required');
  if(!slug.test(source.provider||''))throw Error('invalid discovery provider');
- if(!slug.test(source.id||''))throw Error('source id required');
+ if(!slug.test(source.id||'')||source.id.length>75)throw Error('discovery source id must be <=75 characters');
  if(source.enabled!==true||source.approved!==true)throw Error('discovery source not explicitly approved');
  const prefix=publicUrl(source.gameUrlPrefix);
  if(!prefix.pathname.endsWith('/'))throw Error('gameUrlPrefix must be a directory path');
