@@ -188,7 +188,11 @@ function Show-CollectorMenu {
     $filter.Location = New-Object Drawing.Point(210,388); $filter.Size = New-Object Drawing.Size(430,25); $form.Controls.Add($filter)
     $gameColumns = @(@('provider','Proveedor'),@('gameId','Juego'),@('state','Estado'),@('captures','Capturas'),@('classified','Clasificadas'),@('pending','Pendientes'),@('review','Revision'),@('buys','Compras'),@('anteBets','Ante bet'),@('choices','Elecciones'),@('navigation','Continuar'),@('other','Otros'),@('executed','Ramas hechas'),@('remainingActions','Ramas pendientes'),@('blocked','Bloqueos'),@('uncertain','Inciertas'))
     $gameGrid = New-ProgressGrid $gameColumns 430 365
-    $gameGrid.Columns['gameId'].FillWeight = 220; $gameGrid.Columns['state'].FillWeight = 240
+    $gameGrid.AutoSizeColumnsMode = 'None'
+    foreach ($column in $gameGrid.Columns) { $column.Width = 88 }
+    $gameGrid.Columns['provider'].Width = 100; $gameGrid.Columns['gameId'].Width = 245; $gameGrid.Columns['state'].Width = 245
+    $gameGrid.Columns['provider'].Frozen = $true; $gameGrid.Columns['gameId'].Frozen = $true
+    $gameGrid.ColumnHeadersHeight = 44
     $form.Tag = @{lastFetch=[datetime]::MinValue;lastVersion='';report=$null;progressProcess=$null}
     $renderGames = {
         $gameGrid.Rows.Clear()
