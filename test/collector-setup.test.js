@@ -55,3 +55,23 @@ test('Start without config reports the setup command instead of a missing-file s
   assert.throws(()=>powershell(script,['-Action','Start']),/collector-setup\.ps1/);
  }finally{await fs.rm(root,{recursive:true,force:true});}
 });
+
+test('dynamic-workforce Windows bootstrap persists the opt-in mode without fabricating secrets',
+ {skip:process.platform!=='win32'},async()=>{
+ const root=await fixture();
+ try{
+  const setup=path.join(root,'scripts','collector-setup.ps1');
+  const control=path.join(root,'scripts','collector-control.ps1');
+  powershell(setup,['-RunId','test-dynamic-run','-WorkerUrl','https://example.workers.dev','-DynamicWorkers','-MaxWorkers','5','-BrowserWorkers','3']);
+  const settings=JSON.parse(await fs.readFile(path.join(root,'.local-state','collector-control.json'),'utf8'));
+  assert.equal(settings.dynamicWorkers,true);
+  assert.equal(settings.maxWorkers,5);
+  assert.equal(settings.browserWorkers,3);
+  assert.equal(settings.adultConfirmed,false,'adult gating is never bypassed by dynamic mode');
+  const status=JSON.parse(powershell(control,['-Action','Status']));
+  assert.equal(status.dynamicWorkersConfigured,true);
+  assert.equal(status.workforceRunning,false);
+  assert.equal(status.branchesRunning,false);
+  assert.equal(await fs.stat(path.join(root,'.wrangler','deployment-secrets.xml')).catch(()=>null),null);
+ }finally{await fs.rm(root,{recursive:true,force:true});}
+});
