@@ -25,6 +25,7 @@ export function compact(item){
   const {metadata,candidates,...other}=item;
   const minimalMetadata={};
   for(const key of ['url','frameUrl','opaqueCanvas','frameAligned','source'])if(metadata?.[key]!=null)minimalMetadata[key]=metadata[key];
+  if(metadata?.captureValidation){const v=metadata.captureValidation;minimalMetadata.captureValidation={status:v.status,reasons:v.reasons,reportId:v.reportId,validatorVersion:v.validatorVersion,referenceId:v.referenceId,anchors:v.anchors};}
   if(metadata?.networkDiagnostics?.summary){
     minimalMetadata.networkDiagnostics={format:'sanitized-har-1.2',summary:metadata.networkDiagnostics.summary};
   }

@@ -1,5 +1,10 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {storeValidation,listValidations,validationPreview} from '../src/capture-validation.js';
+import {compact} from '../src/mcp.js';
+test('GPT receives readiness evidence without private comparison image bytes',()=>{
+ const item=compact({id:'one',candidates:[],metadata:{captureValidation:{status:'ready',reasons:['same-game-instruments-match'],reportId:'report',preview:'do-not-send-image-bytes'}}});
+ assert.equal(item.metadata.captureValidation.status,'ready');assert.equal(item.metadata.captureValidation.preview,undefined);
+});
 test('rejected captures remain private R2 diagnostics and never enter classification D1',async()=>{
  const objects=new Map();let writes=0;
  const env={DB:{prepare(){writes++;throw Error('diagnostics must not write D1');}},IMAGES:{
