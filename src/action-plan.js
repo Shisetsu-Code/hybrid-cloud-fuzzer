@@ -15,8 +15,12 @@ export function reviewedAction(item,index){
 }
 export function eligibleReviewedPath(action,ancestors,{maxDepth=7,allowNormalSpin=false}={}){
  if(!Array.isArray(ancestors)||ancestors.length>=maxDepth||ancestors.length>20)return false;
+ if(action.state==='UNKNOWN'&&!action.controlPath)return false;
  if(ancestors.some(isCatalogueOverlayAction)||isCatalogueOverlayAction(action))return false;
  const label=(action.label||'')+' '+(action.controlPath||'');
+ const normalized=label.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+ if(/^(?:menu|settings|configuracion|help|ayuda|sound|sonido|autoplay|autojuego|aumentar apuesta|reducir apuesta|increase bet|decrease bet)(?:\s|$)/i.test(normalized.trim()))return false;
+ if(!allowNormalSpin&&action.state==='BASE'&&/^(?:girar|spin|jugar|start spin)(?:\s|$)/i.test(normalized.trim()))return false;
  if(/AutoPlay|Settings|Gear|SoundToggle|HelpButton|MenuButton/i.test(label))return false;
  if(!allowNormalSpin&&action.state==='BASE'&&/(?:Spin[_/-]?Normal|Normal[_/-]?Spin|AutoSpin|SpinButton)/i.test(label))return false;
  return !ancestors.some(a=>key(a)===key(action));

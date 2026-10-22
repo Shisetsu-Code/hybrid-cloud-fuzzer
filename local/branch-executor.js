@@ -1,5 +1,6 @@
 // Local Playwright-only public DEMO branch executor. Never runs on Cloudflare.
 import {bestFrame,screenshotBox} from './select-frame.js';
+import {waitForCaptureReady} from './capture-ready.js';
 import {openPublicDemo,dismissKnownIntro,dismissCatalogueOverlays,captureWithoutCatalogueOverlays,isCatalogueOverlayAction} from './intro.js';
 import {speedUpGame} from './speed.js';
 import {createNetworkRecorder,summarizeHar} from './har.js';
@@ -15,7 +16,7 @@ export function screenPoint(point,{clip,aligned},viewport){
 export function actionEvidence(har){return {status:classifyTrace(har),endpoints:traceEndpoints(har),actions:summarizeHar(har).actions,validated:false};}
 export async function executeDemoBranch(task,source,{
  chromium,browser=null,manifest=[],waitMs=750,speed=1,headless=true,confirmAdult=false,log=console.log,
- openDemo=openPublicDemo,inspect=bestFrame,frameBox=screenshotBox,recorderFactory=createNetworkRecorder
+ openDemo=openPublicDemo,inspect=bestFrame,frameBox=screenshotBox,recorderFactory=createNetworkRecorder,beforeClick=async()=>{}
 }={}){
  if(!browser&&!chromium?.launch)throw Error('Playwright Chromium required');
  if(task.path.some(isCatalogueOverlayAction))throw Error('Catalogue consent is not a reviewed game branch');
@@ -38,7 +39,8 @@ export async function executeDemoBranch(task,source,{
    let candidate=null,position=null,shot=null;
    for(let attempt=0;attempt<4;attempt++){
     await dismissCatalogueOverlays(page,{provider:task.provider,url,confirmAdult,requireClear:true});
-    candidate=await inspect(page,task.provider);
+    candidate=await waitForCaptureReady(page,task.provider,{inspect,
+     cleanup:()=>dismissCatalogueOverlays(page,{provider:task.provider,url,confirmAdult,requireClear:true})});
     if(!candidate)throw Error('no game frame');
     if(candidate.data.state==='INTRO'&&step.state!=='INTRO'&&task.provider==='pragmatic'){
      const intro=await dismissKnownIntro(page,candidate,{inspect:()=>inspect(page,task.provider)});
@@ -58,6 +60,7 @@ export async function executeDemoBranch(task,source,{
    const last=i===task.path.length-1;
    if(last)recorder=recorderFactory(context,{maxEntries:500,maxFrames:200});
    // The pending journal is already durable BEFORE this click. Never silently retry it.
+   await beforeClick();
    actionIssued=true;await page.mouse.click(absolute.x,absolute.y,{delay:30});
    await page.waitForTimeout(Math.min(Math.max(waitMs,450),4000));
    if(last)observed=await recorder.finish();recorder=null;
@@ -65,7 +68,8 @@ export async function executeDemoBranch(task,source,{
   }
   // Clear late catalogue dialogs before inspecting/cropping the evidence JPEG.
   const {result,box,image}=await captureWithoutCatalogueOverlays(page,{provider:task.provider,url,confirmAdult},async()=>{
-   const result=await inspect(page,task.provider);
+   const result=await waitForCaptureReady(page,task.provider,{inspect,
+    cleanup:()=>dismissCatalogueOverlays(page,{provider:task.provider,url,confirmAdult,requireClear:true})});
    if(!result)throw Error('game frame disappeared after reviewed action');
    const box=await frameBox(page,result.frame);
    const image=Buffer.from(await page.screenshot({type:'jpeg',quality:65,...(box.clip?{clip:box.clip}:{})}));

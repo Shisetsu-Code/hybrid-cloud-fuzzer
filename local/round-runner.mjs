@@ -18,14 +18,28 @@ const url=args.url||process.env.HYBRID_FUZZER_URL,reviewToken=process.env.HYBRID
 const cloud=new CloudClient({endpoint:url,reviewToken,ingestToken});
 const speed=validateSpeed(args.speed||1),limit=Number(args.limit||5),interval=Number(args['interval-ms']||15000);
 const waitMs=Number(args['wait-ms']||850),maxDepth=Number(args['max-depth']||7);
-if(!Number.isSafeInteger(limit)||limit<1||limit>200||!Number.isSafeInteger(interval)||interval<3000||!Number.isSafeInteger(waitMs)||waitMs<450||waitMs>10000||!Number.isSafeInteger(maxDepth)||maxDepth<1||maxDepth>12)throw Error('invalid CLI numeric arguments');
+if(!Number.isSafeInteger(limit)||limit<1||limit>200||!Number.isSafeInteger(interval)||interval<3000||!Number.isSafeInteger(waitMs)||waitMs<450||waitMs>10000||!Number.isSafeInteger(maxDepth)||maxDepth<1||maxDepth>7)throw Error('invalid CLI numeric arguments; coordinated max-depth must be 1..7');
+if(args['allow-normal-spin']===true)throw Error('normal spins are excluded by the coordinated continuation policy');
 let stop=false;const signal=()=>{stop=true;};process.on('SIGINT',signal);process.on('SIGTERM',signal);
 const run=async()=>{
  const {chromium}=await import('playwright');
  const browser=await chromium.launch({headless:args.headed!==true});
  const limiter=new RateLimiter(path.join(output,'.throttle.json'),{maxPerMinute:3});
- const worker=new LoopController({cloud,runId:manifest.runId,outDir:output,limit,maxDepth,allowNormalSpin:args['allow-normal-spin']===true,executor:async(task,source)=>{await limiter.reserve();return executeDemoBranch(task,source,
-  {browser,manifest:manifest.games,waitMs,speed,confirmAdult:args['confirm-adult']===true});}});
+ const worker=new LoopController({cloud,runId:manifest.runId,outDir:output,limit,maxDepth,coordinated:true,allowNormalSpin:args['allow-normal-spin']===true,executor:async(task,source)=>{
+  await limiter.reserve();
+  const workerId='branch-'+task.id;let session;const deadline=Date.now()+300000;
+  do{
+   if(stop||await updateDrainRequested())throw Error('continuation stopped before browser action');
+   session=await cloud.call('/v1/work/provider/lease',{method:'POST',body:JSON.stringify({provider:task.provider,runId:task.runId,gameId:task.gameId,workerId,leaseSeconds:900})});
+   if(session.granted)break;
+   if(['disabled','unconfigured'].includes(session.reason))throw Error('provider policy '+session.reason);
+   if(Date.now()>=deadline)throw Error('provider pacing wait exceeded');
+   await sleep(Math.min(30000,Math.max(1000,session.retryAfterMs||1000)));
+  }while(!session.granted);
+  const renew=()=>cloud.call('/v1/work/provider/renew',{method:'POST',body:JSON.stringify({leaseId:session.leaseId,workerId,leaseSeconds:900})});
+  try{return await executeDemoBranch(task,source,{browser,manifest:manifest.games,waitMs,speed,confirmAdult:args['confirm-adult']===true,beforeClick:renew});}
+  finally{await cloud.call('/v1/work/provider/release',{method:'POST',body:JSON.stringify({leaseId:session.leaseId,workerId})}).catch(e=>console.error('PROVIDER RELEASE',e.message));}
+ }});
  try{do{
   if(await updateDrainRequested())break;
   try{const res=await worker.once();console.log('ROUND',JSON.stringify(res));}

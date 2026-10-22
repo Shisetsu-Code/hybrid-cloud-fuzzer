@@ -15,6 +15,18 @@ export class CloudClient{
   return raw?data:data;
  }
  async stats(runId){const q=new URLSearchParams({runId});return (await this.call('/v1/stats?'+q)).counts;}
+ async branchExecutions(runId){
+  const items=[];let after='';
+  for(let page=0;page<1000;page++){
+   const data=await this.call('/v1/branches?'+new URLSearchParams({runId,after}));
+   if(!Array.isArray(data.items)||typeof data.hasMore!=='boolean')throw Error('invalid branch coordination response');
+   items.push(...data.items);if(!data.hasMore)return items;
+   if(typeof data.nextAfter!=='string'||data.nextAfter<=after)throw Error('branch execution cursor did not advance');after=data.nextAfter;
+  }
+  throw Error('branch execution pagination budget exceeded');
+ }
+ async claimBranch(task){return this.call('/v1/branches/claim',{method:'POST',body:JSON.stringify({parentId:task.parentId,revision:task.parentRevision,sourceSha256:task.parentSourceSha256,actionIndex:task.actionIndex,taskId:task.id})});}
+ async finishBranch(task,execution,status,{reason=null,childId=null}={}){return this.call('/v1/branches/finish',{method:'POST',body:JSON.stringify({taskId:task.id,token:execution.token,status,reason,childId})});}
  async allDecisions(runId){
   const result=[];let after=0;
   for(let n=0;n<1000;n++){

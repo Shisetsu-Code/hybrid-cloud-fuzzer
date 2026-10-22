@@ -79,3 +79,24 @@ test('incorrect routine Spin/Autoplay/settings marks are not executed as explora
  const item={...base,candidates,decisions};
  assert.equal(collectTasks([item]).length,1);assert.equal(collectTasks([item],new Set(),{allowNormalSpin:true}).length,2);
 });
+
+
+test('Spanish routine controls are excluded without discarding purchases or antebets',()=>{
+ const labels=['Girar','Men\u00fa','Autoplay','Aumentar apuesta','Reducir apuesta','Buy Free Spins $200','Ante bet'];
+ const item={...base,candidates:[],decisions:{allMarks:labels.map(label=>({kind:'other',label,x:.5,y:.5}))}};
+ assert.deepEqual(collectTasks([item]).map(t=>t.path.at(-1).label),['Buy Free Spins $200','Ante bet']);
+});
+
+
+test('Pragmatic corporate capture URLs require the matching explicit public demo in the manifest',()=>{
+ const item={...base,metadata:{url:'https://www.pragmaticplay.com/en/games/'+base.gameId+'/'}};
+ const url='https://www.pragmaticplay.fun/en/slots/'+base.gameId+'/';
+ assert.equal(resolveDemoUrl(item,{catalog:[{provider:'pragmatic',id:base.gameId,url}]}),url);
+ assert.throws(()=>resolveDemoUrl(item));
+});
+
+
+test('unknown-state coordinate marks await a runtime adapter instead of becoming execution attempts',()=>{
+ const item={...base,state:'UNKNOWN',candidates:[],decisions:{allMarks:[{kind:'navigate',label:'Continue',x:.5,y:.5}]}};
+ assert.equal(collectTasks([item]).length,0);
+});
