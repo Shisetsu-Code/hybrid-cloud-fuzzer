@@ -27,6 +27,12 @@ export async function storeValidation(env,payload,jpeg){
  report.id=await hashHex(new TextEncoder().encode(JSON.stringify(report)));
  await env.IMAGES.put('validation/previews/'+report.id+'.jpg',bytes,{httpMetadata:{contentType:'image/jpeg'}});
  await env.IMAGES.put('validation/reports/'+report.runId+'/'+report.id+'.json',JSON.stringify(report),{httpMetadata:{contentType:'application/json'}});
+ // Seed only from the exact already-classified JPEG, never from a rejected or
+ // newly unreviewed capture. Existing per-game references are preserved.
+ if(report.referenceId&&report.status==='ready'&&report.sourceImageSha256===report.referenceSha256&&new Set(report.anchors.map(a=>a.role)).size>=2){
+  const key='validation/profiles/'+report.provider+'/'+report.gameId+'.json';
+  if(!await env.IMAGES.get(key))await env.IMAGES.put(key,JSON.stringify({id:report.referenceId,provider:report.provider,gameId:report.gameId,imageSha256:report.referenceSha256,anchors:report.anchors}),{httpMetadata:{contentType:'application/json'}});
+ }
  return report;
 }
 export async function listValidations(env,{runId,cursor='',limit=30}={}){
@@ -41,6 +47,12 @@ export async function validationPreview(env,value){
 }
 export async function validationReference(env,{provider,gameId}={}){
  id(provider);id(gameId);
+ const stored=await env.IMAGES.get('validation/profiles/'+provider+'/'+gameId+'.json');
+ if(stored){
+  const reference=JSON.parse(await stored.text());
+  const approved=await env.DB.prepare("SELECT id FROM items WHERE id=? AND provider=? AND game_id=? AND image_sha256=? AND status='classified'").bind(reference.id,provider,gameId,reference.imageSha256).first();
+  if(approved)return {reference};
+ }
  const rows=await env.DB.prepare("SELECT * FROM items WHERE provider=? AND game_id=? AND status='classified' AND image_key IS NOT NULL ORDER BY reviewed_at DESC LIMIT 20").bind(provider,gameId).all();
  for(const row of rows.results){
   let metadata;try{metadata=JSON.parse(row.metadata_json);}catch{continue;}
