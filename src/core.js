@@ -37,7 +37,7 @@ export async function ingest(env,payload,image=null,{replace=false}={}){
     if(!validation||!shaPattern.test(validation.reportId||''))throw new InputError('capture readiness validation required',409);
     const object=await env.IMAGES.get('validation/reports/'+item.runId+'/'+validation.reportId+'.json');
     let proof;try{proof=object?JSON.parse(await object.text()):null;}catch{}
-    if(!proof||proof.runId!==item.runId||proof.provider!==item.provider||proof.gameId!==item.gameId||proof.sourceImageSha256!==imageHash||!['ready','intro'].includes(proof.status))throw new InputError('capture validation does not approve this exact image',409);
+    if(!proof||proof.runId!==item.runId||proof.provider!==item.provider||proof.gameId!==item.gameId||proof.sourceImageSha256!==imageHash||validation.status!==proof.status||!['ready','intro'].includes(proof.status))throw new InputError('capture validation does not approve this exact image',409);
   }
   if(imageKey)await env.IMAGES.put(imageKey,image,{httpMetadata:{contentType:jpegMime},customMetadata:{sha256:imageHash}});
   const values=[item.state,item.mode,item.adapter,item.adapterVersion,JSON.stringify(item.candidates),JSON.stringify(item.metadata),sourceSha,imageKey,imageHash,item.width,item.height];
