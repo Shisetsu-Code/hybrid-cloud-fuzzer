@@ -49,14 +49,18 @@ function Get-CollectorStatus {
     $secretsPresent = Test-Path -LiteralPath (Join-Path $script:repo '.wrangler/deployment-secrets.xml') -PathType Leaf
     $isDynamic = $false
     $isAutoUpdate = $false
+    $catalogQueue = $false
+    $continuationOnly = $false
     if ($configPresent) {
         try {
             $c = Get-Content -Raw -LiteralPath $script:settingsFile | ConvertFrom-Json
             $isDynamic = ($c.dynamicWorkers -eq $true)
             $isAutoUpdate = ($c.autoUpdate -eq $true)
+            $catalogQueue = ($c.catalogQueue -eq $true)
+            $continuationOnly = ($c.continuationOnly -eq $true)
         } catch {}
     }
-    return [PSCustomObject]@{captureRunning=[bool]$capture;syncRunning=[bool]$sync;branchesRunning=[bool]$branches;workforceRunning=[bool]$workforce;updaterRunning=[bool]$updater;updaterPid=$(if($updater){$updater.ProcessId}else{$null});autoUpdateConfigured=[bool]$isAutoUpdate;workforcePid=$(if($workforce){$workforce.ProcessId}else{$null});dynamicWorkersConfigured=[bool]$isDynamic;branchesPid=$(if($branches){$branches.ProcessId}else{$null});capturePid=$(if($capture){$capture.ProcessId}else{$null});syncPid=$(if($sync){$sync.ProcessId}else{$null});configPresent=[bool]$configPresent;secretsPresent=[bool]$secretsPresent}
+    return [PSCustomObject]@{continuationOnly=$continuationOnly;catalogQueue=$catalogQueue;captureRunning=[bool]$capture;syncRunning=[bool]$sync;branchesRunning=[bool]$branches;workforceRunning=[bool]$workforce;updaterRunning=[bool]$updater;updaterPid=$(if($updater){$updater.ProcessId}else{$null});autoUpdateConfigured=[bool]$isAutoUpdate;workforcePid=$(if($workforce){$workforce.ProcessId}else{$null});dynamicWorkersConfigured=[bool]$isDynamic;branchesPid=$(if($branches){$branches.ProcessId}else{$null});capturePid=$(if($capture){$capture.ProcessId}else{$null});syncPid=$(if($sync){$sync.ProcessId}else{$null});configPresent=[bool]$configPresent;secretsPresent=[bool]$secretsPresent}
 }
 function Start-Collector {
     if (-not (Test-Path -LiteralPath $script:settingsFile -PathType Leaf)) {
@@ -92,7 +96,7 @@ function Start-Collector {
         throw 'Deten Workforce antes de volver al modo legado.'
     }
     $hostPath = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
-    $roles = if ($config.dynamicWorkers -eq $true) { @('Sync','Workforce') } else { @('Sync','Branches','Capture') }
+    $roles = if ($config.continuationOnly -eq $true) { @('Branches') } elseif ($config.dynamicWorkers -eq $true) { @('Sync','Workforce') } elseif ($config.catalogQueue -eq $true) { @('Sync','Capture') } else { @('Sync','Branches','Capture') }
     if ($config.autoUpdate -eq $true) { $roles += 'Updater' }
     foreach ($role in $roles) {
         if (Get-ManagedWorker -Role $role -Record $record) { continue }
@@ -211,7 +215,7 @@ function Show-CollectorMenu {
             } else {
                 $label.Text = 'Captura: ' + $(if($status.captureRunning){'en marcha'}else{'detenida'}) + "`r`n" + 'Sincronizacion: ' + $(if($status.syncRunning){'en marcha'}else{'detenida'}) + "`r`n" + 'Ramas: ' + $(if($status.branchesRunning){'en marcha'}else{'detenida'})
             }
-            $start.Enabled = if($status.dynamicWorkersConfigured){-not ($status.workforceRunning -and $status.syncRunning)}else{-not ($status.captureRunning -and $status.syncRunning -and $status.branchesRunning)}
+            $start.Enabled = if($status.continuationOnly){-not $status.branchesRunning}elseif($status.dynamicWorkersConfigured){-not ($status.workforceRunning -and $status.syncRunning)}elseif($status.catalogQueue){-not ($status.captureRunning -and $status.syncRunning)}else{-not ($status.captureRunning -and $status.syncRunning -and $status.branchesRunning)}
             $stop.Enabled = $status.updaterRunning -or $status.workforceRunning -or $status.captureRunning -or $status.syncRunning -or $status.branchesRunning
             $progressFile = Join-Path $script:repo '.local-state/collector-progress.json'
             if (Test-Path -LiteralPath $progressFile) {

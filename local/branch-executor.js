@@ -1,5 +1,6 @@
 // Local Playwright-only public DEMO branch executor. Never runs on Cloudflare.
 import {bestFrame,screenshotBox} from './select-frame.js';
+import {waitForCaptureReady} from './capture-ready.js';
 import {openPublicDemo,dismissKnownIntro,dismissCatalogueOverlays,captureWithoutCatalogueOverlays,isCatalogueOverlayAction} from './intro.js';
 import {speedUpGame} from './speed.js';
 import {createNetworkRecorder,summarizeHar} from './har.js';
@@ -38,7 +39,8 @@ export async function executeDemoBranch(task,source,{
    let candidate=null,position=null,shot=null;
    for(let attempt=0;attempt<4;attempt++){
     await dismissCatalogueOverlays(page,{provider:task.provider,url,confirmAdult,requireClear:true});
-    candidate=await inspect(page,task.provider);
+    candidate=await waitForCaptureReady(page,task.provider,{inspect,
+     cleanup:()=>dismissCatalogueOverlays(page,{provider:task.provider,url,confirmAdult,requireClear:true})});
     if(!candidate)throw Error('no game frame');
     if(candidate.data.state==='INTRO'&&step.state!=='INTRO'&&task.provider==='pragmatic'){
      const intro=await dismissKnownIntro(page,candidate,{inspect:()=>inspect(page,task.provider)});
@@ -65,7 +67,8 @@ export async function executeDemoBranch(task,source,{
   }
   // Clear late catalogue dialogs before inspecting/cropping the evidence JPEG.
   const {result,box,image}=await captureWithoutCatalogueOverlays(page,{provider:task.provider,url,confirmAdult},async()=>{
-   const result=await inspect(page,task.provider);
+   const result=await waitForCaptureReady(page,task.provider,{inspect,
+    cleanup:()=>dismissCatalogueOverlays(page,{provider:task.provider,url,confirmAdult,requireClear:true})});
    if(!result)throw Error('game frame disappeared after reviewed action');
    const box=await frameBox(page,result.frame);
    const image=Buffer.from(await page.screenshot({type:'jpeg',quality:65,...(box.clip?{clip:box.clip}:{})}));

@@ -24,7 +24,9 @@ if ($Role -eq 'Updater') {
     & $node @arguments
 } elseif ($Role -eq 'Capture') {
     $env:PLAYWRIGHT_BROWSERS_PATH = $config.browserPath
-    $arguments = @((Join-Path $repo 'local/capture.mjs'), "--manifest=$($config.manifest)", "--out=$($config.outbox)", "--rate=$($config.rate)", "--wait-ms=$($config.waitMs)", "--har=$($config.har)", "--speed=$($config.speed)")
+    $captureScript = if ($config.catalogQueue -eq $true) { 'local/catalog-collector.mjs' } else { 'local/capture.mjs' }
+    $arguments = @((Join-Path $repo $captureScript), "--manifest=$($config.manifest)", "--out=$($config.outbox)", "--rate=$($config.rate)", "--wait-ms=$($config.waitMs)", "--har=$($config.har)", "--speed=$($config.speed)")
+    if ($config.catalogQueue -eq $true) { $arguments += "--concurrency=$($config.captureConcurrency)" }
     if ($config.adultConfirmed -eq $true) { $arguments += '--confirm-adult' }
     & $node @arguments
 } elseif ($Role -eq 'Branches') {

@@ -24,7 +24,7 @@ const run=async()=>{
  const {chromium}=await import('playwright');
  const browser=await chromium.launch({headless:args.headed!==true});
  const limiter=new RateLimiter(path.join(output,'.throttle.json'),{maxPerMinute:3});
- const worker=new LoopController({cloud,runId:manifest.runId,outDir:output,limit,maxDepth,allowNormalSpin:args['allow-normal-spin']===true,executor:async(task,source)=>{await limiter.reserve();return executeDemoBranch(task,source,
+ const worker=new LoopController({cloud,runId:manifest.runId,outDir:output,limit,maxDepth,coordinated:true,allowNormalSpin:args['allow-normal-spin']===true,executor:async(task,source)=>{await limiter.reserve();return executeDemoBranch(task,source,
   {browser,manifest:manifest.games,waitMs,speed,confirmAdult:args['confirm-adult']===true});}});
  try{do{
   if(await updateDrainRequested())break;

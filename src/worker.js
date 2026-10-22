@@ -4,6 +4,7 @@ import {recordTrace,retrieveTrace} from './traces.js';
 import {enqueueWork,claimWork,renewWork,finishWork,deferWork,agentHeartbeat,workforceStats} from './workforce.js';
 import {setProviderPolicy,providerPolicies,acquireProviderSession,renewProviderSession,releaseProviderSession,providerWorkload} from './provider-pacing.js';
 import {progressReport} from './progress.js';
+import {branchExecutions,claimBranch,finishBranch} from './branches.js';
 
 function eqSecret(a,b){
   if(typeof a!=='string'||typeof b!=='string'||!a||!b)return false;
@@ -56,7 +57,8 @@ export default {
           const workforceReady=Number(workforce?.n)===2;
           const pacing=await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('provider_policies','provider_sessions')").first();
           const pacingReady=Number(pacing?.n)===2;
-          return json({ok:true,service:'hybrid-cloud-fuzzer',schemaVersion:pacingReady?4:workforceReady?3:2,workforceReady,pacingReady,storage:'R2',database:'D1',mcp:'/mcp'});}
+          const branches=await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='branch_executions'").first();
+          return json({branchCoordinationReady:Number(branches?.n)===1,ok:true,service:'hybrid-cloud-fuzzer',schemaVersion:pacingReady?4:workforceReady?3:2,workforceReady,pacingReady,storage:'R2',database:'D1',mcp:'/mcp'});}
         catch{return json({ok:false,error:'D1/R2 not ready'},503);}
       }
       if(p==='/mcp')return authorized(request,env.MCP_TOKEN)?await handleMcp(request,env):reject();
@@ -70,6 +72,9 @@ export default {
       }
       if(p.startsWith('/v1/')){
         if(!authorized(request,env.REVIEW_TOKEN))return reject();
+        if(p==='/v1/branches'&&request.method==='GET')return json(await branchExecutions(env,{runId:url.searchParams.get('runId'),after:url.searchParams.get('after')||''}));
+        if(p==='/v1/branches/claim'&&request.method==='POST')return json(await claimBranch(env,await readJSON(request)));
+        if(p==='/v1/branches/finish'&&request.method==='POST')return json(await finishBranch(env,await readJSON(request)));
         // Workforce scheduler: all mutating routes require the existing REVIEW token.
         // Only the local agents execute discovery or captures; the Worker leases tickets.
         if(p==='/v1/work/jobs'&&request.method==='POST')return json(await enqueueWork(env,await readJSON(request)),201);

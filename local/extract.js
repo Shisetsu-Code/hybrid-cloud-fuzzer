@@ -39,5 +39,6 @@ export function adapterHelp(){return {
   'pragmatic':'read-only Unity/XTButton runtime extractor',
   'any-html':'generic DOM buttons, ARIA roles, links, toggles and menu items',
   'playtech,3oaks,rubyplay,belatra,unknown':'generic DOM if accessible, screenshot fallback for opaque canvas',
+  'playngo,amusnet,netent,pgsoft':'generic DOM if accessible, screenshot fallback for opaque canvas; no validated provider runtime',
   add:'Implement an inspect function for the provider, register it in extractFromFrame, preserve normalized rects.'
 };}

@@ -34,8 +34,12 @@ export function resolveDemoUrl(item,{catalog=[]}={}){
  const approved=catalog.find(g=>g.id===item.gameId&&g.provider===item.provider&&g.enabled!==false);
  const original=item.metadata?.url||approved?.url||(item.provider==='pragmatic'?`https://www.pragmaticplay.fun/en/slots/${item.gameId}/`:null);
  if(!original)throw Error('public demo URL unavailable');
- const url=new URL(safeHttps(original));
+ let url=new URL(safeHttps(original));
  if(item.provider==='pragmatic'){
+  if(url.hostname==='www.pragmaticplay.com'&&url.pathname===`/en/games/${item.gameId}/`&&approved){
+   const target=new URL(safeHttps(approved.url));
+   if(target.hostname==='www.pragmaticplay.fun'&&target.pathname===`/en/slots/${item.gameId}/`)url=target;
+  }
   if(url.hostname!=='www.pragmaticplay.fun'||!/^\/en\/slots\/[a-z0-9-]+\/$/.test(url.pathname))throw Error('pragmatic demo host/path not approved');
  }else if(!approved || approved.url!==original){throw Error('non-Pragmatic demo must be explicitly listed in manifest');}
  return url.toString();

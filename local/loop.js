@@ -10,9 +10,9 @@ import {updateDrainRequested} from './update-drain.js';
 const gameKey=item=>item.provider+'/'+item.gameId;
 
 export class LoopController{
- constructor({cloud,executor,runId,outDir='outbox',limit=20,maxDepth=7,allowNormalSpin=false,log=console.log}={}){
+ constructor({cloud,executor,runId,outDir='outbox',limit=20,maxDepth=7,allowNormalSpin=false,coordinated=false,log=console.log}={}){
   if(!runId||!cloud||!executor)throw Error('runId, cloud and executor required');
-  Object.assign(this,{cloud,executor,runId,outDir:path.resolve(outDir),limit,maxDepth,allowNormalSpin,log});
+  Object.assign(this,{cloud,executor,runId,outDir:path.resolve(outDir),limit,maxDepth,allowNormalSpin,coordinated,log});
  }
  async uploadSaved(entry,journal){
   const {task,itemFile,imageFile,traceFile}=entry;
@@ -23,6 +23,10 @@ export class LoopController{
   if(uploaded.item?.gameId!==task.gameId||uploaded.item?.shotId!==task.shotId)throw Error('remote capture identity mismatch');
   await this.cloud.uploadTrace({traceId:task.id,runId:task.runId,provider:task.provider,gameId:task.gameId,parentId:task.parentId,
    parentSourceSha256:task.parentSourceSha256,parentRevision:task.parentRevision,childId:uploaded.item.id,trace:compactRemoteTrace(trace)});
+  if(this.coordinated){
+   if(!entry.execution?.token)throw Error('missing durable execution ownership');
+   await this.cloud.finishBranch(task,entry.execution,'done',{childId:uploaded.item.id});
+  }
   await journal.set(task,'done');
  }
  async once(){
@@ -88,6 +92,7 @@ export class LoopController{
   // Only one branch per game per polling round, so after publishing a child
   // its own classification is the next prerequisite. Other games run normally.
   const known=new Set(Object.keys(journal.entries));
+  if(this.coordinated)for(const entry of await this.cloud.branchExecutions(this.runId))known.add(entry.task_id);
   const tasks=collectTasks(items.filter(x=>!blockedKeys.has(gameKey(x))),known,{
    maxDepth:this.maxDepth,maxTasks:3000,allowNormalSpin:this.allowNormalSpin
   });
@@ -102,8 +107,10 @@ export class LoopController{
   for(const task of selected){
    if(await updateDrainRequested())break;
    const key=gameKey(task);
+   let execution=null;
    try{
-    await journal.set(task,'running');
+    if(this.coordinated){execution=await this.cloud.claimBranch(task);if(!execution.acquired){this.log('BRANCH WAIT '+task.gameId+': '+execution.status);continue;}}
+    await journal.set(task,'running',execution?{execution}:{});
     const source=sources.get(task.parentId);
     const capture=await this.executor(task,source);
     const prefix=task.runId+'__'+task.provider+'__'+task.gameId+'__'+task.shotId;
@@ -119,6 +126,7 @@ export class LoopController{
     // No automatic retry once there is any possibility a click occurred.
     if(journal.status(task.id)==='running'){
      await journal.set(task,e.actionIssued?'uncertain':'blocked',{reason:String(e.message).slice(0,240)});
+     if(execution?.token)await this.cloud.finishBranch(task,execution,e.actionIssued?'uncertain':'blocked',{reason:String(e.message).slice(0,300)}).catch(error=>this.log('REMOTE EXECUTION REMAINS RESERVED: '+error.message));
     }
     blocked++;
     blockedKeys.add(key);
