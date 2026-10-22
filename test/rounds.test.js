@@ -94,3 +94,9 @@ test('Pragmatic corporate capture URLs require the matching explicit public demo
  assert.equal(resolveDemoUrl(item,{catalog:[{provider:'pragmatic',id:base.gameId,url}]}),url);
  assert.throws(()=>resolveDemoUrl(item));
 });
+
+
+test('unknown-state coordinate marks await a runtime adapter instead of becoming execution attempts',()=>{
+ const item={...base,state:'UNKNOWN',candidates:[],decisions:{allMarks:[{kind:'navigate',label:'Continue',x:.5,y:.5}]}};
+ assert.equal(collectTasks([item]).length,0);
+});

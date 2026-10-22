@@ -15,6 +15,7 @@ export function reviewedAction(item,index){
 }
 export function eligibleReviewedPath(action,ancestors,{maxDepth=7,allowNormalSpin=false}={}){
  if(!Array.isArray(ancestors)||ancestors.length>=maxDepth||ancestors.length>20)return false;
+ if(action.state==='UNKNOWN'&&!action.controlPath)return false;
  if(ancestors.some(isCatalogueOverlayAction)||isCatalogueOverlayAction(action))return false;
  const label=(action.label||'')+' '+(action.controlPath||'');
  const normalized=label.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
