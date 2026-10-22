@@ -59,7 +59,7 @@ export default {
           const pacing=await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('provider_policies','provider_sessions')").first();
           const pacingReady=Number(pacing?.n)===2;
           const branches=await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='branch_executions'").first();
-          return json({branchCoordinationReady:Number(branches?.n)===1,ok:true,service:'hybrid-cloud-fuzzer',schemaVersion:pacingReady?4:workforceReady?3:2,workforceReady,pacingReady,storage:'R2',database:'D1',mcp:'/mcp'});}
+          return json({captureValidationReady:true,branchCoordinationReady:Number(branches?.n)===1,ok:true,service:'hybrid-cloud-fuzzer',schemaVersion:pacingReady?4:workforceReady?3:2,workforceReady,pacingReady,storage:'R2',database:'D1',mcp:'/mcp'});}
         catch{return json({ok:false,error:'D1/R2 not ready'},503);}
       }
       if(p==='/mcp')return authorized(request,env.MCP_TOKEN)?await handleMcp(request,env):reject();
