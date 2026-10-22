@@ -1,5 +1,6 @@
 // Stateless MCP over HTTP. No custom app/plugin installation needed for HTTP-capable clients.
 import {InputError,claim,save,release,rawItem,publicItem,stats,auditClassifications} from './core.js';
+import {listValidations,validationPreview} from './capture-validation.js';
 const text=v=>({type:'text',text:JSON.stringify(v)});
 const str={type:'string'};
 const schema=(props,required=[])=>({type:'object',properties:props,required,additionalProperties:false});
@@ -14,6 +15,8 @@ export const definitions=[
   {name:'get_item',description:'Reload an actively leased task. Use includeImage=true to load a backup JPEG for an otherwise structured task.',inputSchema:schema({id:str,leaseId:str,includeImage:{type:'boolean'}},['id','leaseId'])},
   {name:'release_item',description:'Return leased item to the pending queue.',inputSchema:schema({id:str,leaseId:str,revision:{type:'integer'}},['id','leaseId','revision'])},
   {name:'queue_stats',description:'Fast count of pending/leased/classified/needs_review.',inputSchema:schema({runId:str,provider:str})},
+  {name:'audit_capture_validations',description:'READ-ONLY: list capture readiness checks, including rejected screenshots outside the classification queue.',inputSchema:schema({runId:str,cursor:str,limit:{type:'integer',minimum:1,maximum:50}},['runId'])},
+  {name:'capture_validation_preview',description:'READ-ONLY: view annotated current image and same-game reference comparison for a validation report.',inputSchema:schema({id:str},['id'])},
   {name:'audit_classifications',description:'READ-ONLY: list past classifications with original candidate paths, coordinates and decisions. Paginate with nextAfterId. Does not claim tasks or change D1.',inputSchema:schema({runId:str,provider:str,status:{enum:['classified','needs_review']},afterId:str,limit:{type:'integer',minimum:1,maximum:50},includeCandidates:{type:'boolean'}})},
   {name:'audit_item',description:'READ-ONLY: inspect one previously classified item, optionally loading its R2 JPEG for visual verification. No lease needed.',inputSchema:schema({id:str,includeImage:{type:'boolean'}},['id'])}
 ];
@@ -22,6 +25,7 @@ export function compact(item){
   const {metadata,candidates,...other}=item;
   const minimalMetadata={};
   for(const key of ['url','frameUrl','opaqueCanvas','frameAligned','source'])if(metadata?.[key]!=null)minimalMetadata[key]=metadata[key];
+  if(metadata?.captureValidation){const v=metadata.captureValidation;minimalMetadata.captureValidation={status:v.status,reasons:v.reasons,reportId:v.reportId,validatorVersion:v.validatorVersion,referenceId:v.referenceId,anchors:v.anchors};}
   if(metadata?.networkDiagnostics?.summary){
     minimalMetadata.networkDiagnostics={format:'sanitized-har-1.2',summary:metadata.networkDiagnostics.summary};
   }
@@ -41,6 +45,10 @@ async function claimed(env,item){
 }
 async function tool(env,name,arg){
   switch(name){
+    case 'audit_capture_validations':return {content:[text(await listValidations(env,arg))]};
+    case 'capture_validation_preview':{
+      const obj=await validationPreview(env,arg.id);return {content:[{type:'image',mimeType:'image/jpeg',data:toBase64(await obj.arrayBuffer())}]};
+    }
     case 'next_item':return claimed(env,await claim(env,arg));
     case 'save_and_next':{
       const saved=await save(env,arg);

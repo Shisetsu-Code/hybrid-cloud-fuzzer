@@ -13,6 +13,28 @@ function fixture({withoutTraces=false}={}){
   return {env:{DB,IMAGES,INGEST_TOKEN:'ingest-test',REVIEW_TOKEN:'review-test',MCP_TOKEN:'mcp-test'},images,close:()=>sqlite.close()};
 }
 const JPEG=new Uint8Array([255,216,1,2,3,4,255,217]);
+
+test('validation previews require review auth and rejected screenshots do not enter the queue',async()=>{
+ const f=fixture();try{
+  const url='https://worker.example/v1/validation-reports';
+  assert.equal((await worker.fetch(new Request(url,{method:'POST'}),f.env)).status,401);
+  const form=new FormData();form.set('metadata',JSON.stringify({runId:'validation-a',provider:'sample',gameId:'one',validatorVersion:'1',status:'loading',reasons:['loading-screen']}));form.set('image',new Blob([JPEG],{type:'image/jpeg'}),'comparison.jpg');
+  const response=await worker.fetch(new Request(url,{method:'POST',headers:{Authorization:'Bearer ingest-test'},body:form}),f.env);
+  assert.equal(response.status,201);const {report}=await response.json();
+  assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM items').first()).n,0);
+  const preview='https://worker.example/v1/validation-previews/'+report.id;
+  assert.equal((await worker.fetch(new Request(preview),f.env)).status,401);
+  assert.equal((await worker.fetch(new Request(preview,{headers:{Authorization:'Bearer review-test'}}),f.env)).status,200);
+ }finally{f.close();}
+});
+test('new GitHub catalogue captures require validation bound to their exact image',async()=>{
+ const f=fixture();try{
+  const payload=imageItem({runId:'readiness-gate',gameId:'unvalidated'});payload.metadata={source:'github-actions-catalogue'};
+  const form=new FormData();form.set('metadata',JSON.stringify(payload));form.set('image',new Blob([JPEG],{type:'image/jpeg'}),'game.jpg');
+  const response=await worker.fetch(new Request('https://worker.example/v1/items',{method:'POST',headers:{Authorization:'Bearer ingest-test'},body:form}),f.env);
+  assert.equal(response.status,409);assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM items').first()).n,0);
+ }finally{f.close();}
+});
 test('progress is private, run-scoped and observational',async()=>{
  const f=fixture();
  try{
@@ -143,7 +165,7 @@ test('MCP structured task has no image payload, tools list is present and auth r
     const bad=await worker.fetch(new Request('https://worker.example/mcp',{method:'POST',headers:{Authorization:'Bearer review-test','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})}),f.env);
     assert.equal(bad.status,401);
     const list=await worker.fetch(new Request('https://worker.example/mcp',{method:'POST',headers:{Authorization:'Bearer mcp-test','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})}),f.env);
-    assert.equal((await list.json()).result.tools.length,8);
+    assert.equal((await list.json()).result.tools.length,10);
   }finally{f.close()}
 });
 
