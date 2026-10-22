@@ -3,6 +3,10 @@ const safe=/^[a-z0-9][a-z0-9_.-]{0,99}$/i,sha=/^[a-f0-9]{64}$/;
 const states=new Set(['ready','intro','loading','blocked','overlay','uncertain']);
 const roles=new Set(['balance','bet','spin','menu','buy','start']);
 function id(value){if(typeof value!=='string'||!safe.test(value))throw new InputError('invalid validation identity');return value;}
+async function approvedProfile(env,reference,provider,gameId){
+ if(reference?.provider!==provider||reference?.gameId!==gameId)return false;
+ return !!await env.DB.prepare("SELECT id FROM items WHERE id=? AND provider=? AND game_id=? AND image_sha256=? AND status='classified'").bind(reference.id,provider,gameId,reference.imageSha256).first();
+}
 function anchors(value){
  if(!Array.isArray(value)||value.length>12)throw new InputError('invalid validation anchors');
  return value.map(a=>{
@@ -31,7 +35,8 @@ export async function storeValidation(env,payload,jpeg){
  // newly unreviewed capture. Existing per-game references are preserved.
  if(report.referenceId&&report.status==='ready'&&report.sourceImageSha256===report.referenceSha256&&new Set(report.anchors.map(a=>a.role)).size>=2){
   const key='validation/profiles/'+report.provider+'/'+report.gameId+'.json';
-  if(!await env.IMAGES.get(key))await env.IMAGES.put(key,JSON.stringify({id:report.referenceId,provider:report.provider,gameId:report.gameId,imageSha256:report.referenceSha256,anchors:report.anchors}),{httpMetadata:{contentType:'application/json'}});
+  const old=await env.IMAGES.get(key);let previous;try{previous=old?JSON.parse(await old.text()):null;}catch{}
+  if(!await approvedProfile(env,previous,report.provider,report.gameId))await env.IMAGES.put(key,JSON.stringify({id:report.referenceId,provider:report.provider,gameId:report.gameId,imageSha256:report.referenceSha256,anchors:report.anchors}),{httpMetadata:{contentType:'application/json'}});
  }
  return report;
 }
@@ -50,8 +55,7 @@ export async function validationReference(env,{provider,gameId}={}){
  const stored=await env.IMAGES.get('validation/profiles/'+provider+'/'+gameId+'.json');
  if(stored){
   const reference=JSON.parse(await stored.text());
-  const approved=await env.DB.prepare("SELECT id FROM items WHERE id=? AND provider=? AND game_id=? AND image_sha256=? AND status='classified'").bind(reference.id,provider,gameId,reference.imageSha256).first();
-  if(approved)return {reference};
+  if(await approvedProfile(env,reference,provider,gameId))return {reference};
  }
  const rows=await env.DB.prepare("SELECT * FROM items WHERE provider=? AND game_id=? AND status='classified' AND image_key IS NOT NULL ORDER BY reviewed_at DESC LIMIT 20").bind(provider,gameId).all();
  for(const row of rows.results){
