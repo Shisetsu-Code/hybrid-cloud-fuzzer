@@ -9,7 +9,7 @@ export async function stageCapture(env,p,image){
  checkIdentity(p);const b=new Uint8Array(image);if(b.length<4||b.length>8*1024*1024||b[0]!==255||b[1]!==216||b.at(-2)!==255||b.at(-1)!==217)throw new InputError('invalid bounded JPEG');
  const id=[p.runId,p.provider,p.gameId,p.shotId].join(':'),hash=await hashHex(image);
  const old=await env.DB.prepare('SELECT * FROM capture_reviews WHERE id=?').bind(id).first();
- if(old?.status==='approved')throw new InputError('already approved; do not replace',409);
+ if(old?.status==='approved')return reviewPublic(old); // Resume upload, preserving the approved JPEG.
  if(old&&old.session_id!==p.sessionId&&old.expires_at>now())throw new InputError('another live capture session',409);
  if(old&&old.session_id===p.sessionId){
   if(old.image_sha256===hash&&old.revision===p.revision&&old.status==='pending')return reviewPublic(old);

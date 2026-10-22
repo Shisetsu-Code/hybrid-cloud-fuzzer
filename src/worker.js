@@ -6,7 +6,7 @@ import {setProviderPolicy,providerPolicies,acquireProviderSession,renewProviderS
 import {progressReport} from './progress.js';
 import {branchExecutions,claimBranch,finishBranch} from './branches.js';
 import {storeValidation,listValidations,validationPreview,validationReference} from './capture-validation.js';
-import {stageCapture,captureTiming,takeCaptureCommand} from './capture-review.js';
+import {stageCapture,captureTiming,takeCaptureCommand,reviewRow} from './capture-review.js';
 
 function eqSecret(a,b){
   if(typeof a!=='string'||typeof b!=='string'||!a||!b)return false;
@@ -90,6 +90,11 @@ export default {
       }
       if(p.startsWith('/v1/')){
         if(!authorized(request,env.REVIEW_TOKEN))return reject();
+        if(p.startsWith('/v1/capture-review-images/')&&request.method==='GET'){
+          const row=await reviewRow(env,decodeURIComponent(p.slice('/v1/capture-review-images/'.length)));
+          const image=await env.IMAGES.get(row.image_key);if(!image)throw new InputError('review JPEG missing',404);
+          return new Response(image.body,{headers:{'Content-Type':'image/jpeg','Cache-Control':'no-store','X-Image-SHA256':row.image_sha256}});
+        }
         if(p==='/v1/capture-timing'&&request.method==='GET')return json(await captureTiming(env,{provider:url.searchParams.get('provider'),gameId:url.searchParams.get('gameId')}));
         if(p==='/v1/validation-reports'&&request.method==='GET')return json(await listValidations(env,{runId:url.searchParams.get('runId'),cursor:url.searchParams.get('cursor')||'',limit:Number(url.searchParams.get('limit')||30)}));
         if(p==='/v1/validation-reference'&&request.method==='GET')return json(await validationReference(env,{provider:url.searchParams.get('provider'),gameId:url.searchParams.get('gameId')}));

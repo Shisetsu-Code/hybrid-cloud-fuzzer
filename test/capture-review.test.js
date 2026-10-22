@@ -22,7 +22,7 @@ test('same batch quality loop: pending images invisible to queue; one command; e
  await instructCapture(f.env,command(second,{action:'approve'}));
  const item=await ingest(f.env,info,jpeg);assert.equal(item.status,'pending');
  assert.equal(f.db.prepare('SELECT count(*) n FROM decision_history').get().n,0);
- await assert.rejects(stageCapture(f.env,{...identity,sessionId:'next-session'},jpeg));
+ assert.equal((await stageCapture(f.env,{...identity,sessionId:'next-session'},jpeg)).status,'approved');
  assert.equal((await reviewRow(f.env,first.id)).status,'approved');
  }finally{f.db.close();}});
 test('expired browser commands are never replayed on a new browser; fresh review required',async()=>{const f=fixture();try{
