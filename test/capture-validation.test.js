@@ -1,0 +1,15 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {storeValidation,listValidations,validationPreview} from '../src/capture-validation.js';
+test('rejected captures remain private R2 diagnostics and never enter classification D1',async()=>{
+ const objects=new Map();let writes=0;
+ const env={DB:{prepare(){writes++;throw Error('diagnostics must not write D1');}},IMAGES:{
+  put:async(k,v)=>objects.set(k,v),get:async k=>objects.has(k)?{text:async()=>objects.get(k),body:objects.get(k)}:null,
+  list:async({prefix})=>({objects:[...objects.keys()].filter(k=>k.startsWith(prefix)).map(key=>({key})),truncated:false})}};
+ const report=await storeValidation(env,{runId:'run-a',provider:'3oaks',gameId:'one',status:'loading',reasons:['loading-screen'],validatorVersion:'1'},new Uint8Array([255,216,0,255,217]));
+ assert.match(report.id,/^[a-f0-9]{64}$/);assert.equal(writes,0);
+ assert.equal((await listValidations(env,{runId:'run-a'})).items[0].status,'loading');
+ assert.equal((await listValidations(env,{runId:'run-b'})).items.length,0);
+ assert.ok(await validationPreview(env,report.id));
+ await assert.rejects(storeValidation(env,{...report,runId:'../outside'},new Uint8Array([255,216,255,217])));
+ await assert.rejects(validationPreview(env,'../private'));
+});
