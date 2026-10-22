@@ -11,11 +11,13 @@ function anchors(value){
  });
 }
 export async function storeValidation(env,payload,jpeg){
+ if(!payload||typeof payload!=='object'||Array.isArray(payload))throw new InputError('invalid validation report');
  const report={runId:id(payload.runId),provider:id(payload.provider),gameId:id(payload.gameId),validatorVersion:id(payload.validatorVersion)};
  if(!states.has(payload.status)||!Array.isArray(payload.reasons)||payload.reasons.length>12||payload.reasons.some(r=>typeof r!=='string'||!/^[a-z0-9_-]{1,80}$/.test(r)))throw new InputError('invalid validation result');
  const bytes=new Uint8Array(jpeg);
  if(bytes.length<4||bytes.length>8*1024*1024||bytes[0]!==255||bytes[1]!==216||bytes.at(-2)!==255||bytes.at(-1)!==217)throw new InputError('valid JPEG comparison required');
  Object.assign(report,{status:payload.status,reasons:payload.reasons,anchors:anchors(payload.anchors||[]),createdAt:new Date().toISOString()});
+ if(payload.sourceImageSha256){if(!sha.test(payload.sourceImageSha256))throw new InputError('invalid source image hash');report.sourceImageSha256=payload.sourceImageSha256;}
  if(payload.referenceId){
   const row=await env.DB.prepare('SELECT * FROM items WHERE id=? AND provider=? AND game_id=? AND status=?').bind(payload.referenceId,report.provider,report.gameId,'classified').first();
   if(!row||row.image_sha256!==payload.referenceSha256)throw new InputError('reference must be approved and belong to this game',409);
