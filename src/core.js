@@ -34,10 +34,15 @@ export async function ingest(env,payload,image=null,{replace=false}={}){
   if(existing&&!replace)throw new InputError('new content under existing shotId; pass replace=true explicitly',409);
   if(item.metadata?.source==='github-actions-catalogue'){
     const validation=item.metadata.captureValidation;
+    if(validation?.reviewId){
+      const review=await env.DB.prepare("SELECT * FROM capture_reviews WHERE id=? AND status='approved'").bind(validation.reviewId).first();
+      if(!review||review.run_id!==item.runId||review.provider!==item.provider||review.game_id!==item.gameId||review.shot_id!==item.shotId||review.image_sha256!==imageHash||review.revision!==validation.revision)throw new InputError('GPT has not approved this exact capture',409);
+    }else{
     if(!validation||!shaPattern.test(validation.reportId||''))throw new InputError('capture readiness validation required',409);
     const object=await env.IMAGES.get('validation/reports/'+item.runId+'/'+validation.reportId+'.json');
     let proof;try{proof=object?JSON.parse(await object.text()):null;}catch{}
     if(!proof||proof.runId!==item.runId||proof.provider!==item.provider||proof.gameId!==item.gameId||proof.sourceImageSha256!==imageHash||validation.status!==proof.status||!['ready','intro'].includes(proof.status))throw new InputError('capture validation does not approve this exact image',409);
+    }
   }
   if(imageKey)await env.IMAGES.put(imageKey,image,{httpMetadata:{contentType:jpegMime},customMetadata:{sha256:imageHash}});
   const values=[item.state,item.mode,item.adapter,item.adapterVersion,JSON.stringify(item.candidates),JSON.stringify(item.metadata),sourceSha,imageKey,imageHash,item.width,item.height];

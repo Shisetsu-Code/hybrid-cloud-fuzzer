@@ -1,6 +1,7 @@
 // Stateless MCP over HTTP. No custom app/plugin installation needed for HTTP-capable clients.
 import {InputError,claim,save,release,rawItem,publicItem,stats,auditClassifications} from './core.js';
 import {listValidations,validationPreview} from './capture-validation.js';
+import {listCaptureReviews,reviewRow,reviewPublic,instructCapture} from './capture-review.js';
 const text=v=>({type:'text',text:JSON.stringify(v)});
 const str={type:'string'};
 const schema=(props,required=[])=>({type:'object',properties:props,required,additionalProperties:false});
@@ -9,6 +10,9 @@ const choice=schema({candidateId:str,kind:{enum:['buy','navigate','pick','other'
 const saveFields={id:str,leaseId:str,revision:{type:'integer'},sourceSha256:str,status:{enum:['classified','needs_review']},reviewer:str,selections:{type:'array',items:choice,maxItems:40},marks:{type:'array',items:mark,maxItems:40}};
 const saveRequired=['id','leaseId','revision','sourceSha256','status','reviewer'];
 export const definitions=[
+  {name:'capture_reviews',description:'List screenshots awaiting GPT quality review in the SAME batch, outside the valid classification queue. Paginate with nextAfterId.',inputSchema:schema({runId:str,afterId:str,limit:{type:'integer',minimum:1,maximum:50}},['runId'])},
+  {name:'capture_review_image',description:'Inspect latest screenshot and its exact revision/session/hash before deciding wait, click or approve.',inputSchema:schema({id:str},['id'])},
+  {name:'capture_review_action',description:'Persist next quality action for this exact image: wait then recapture, click normalized coordinates then recapture, or approve as valid. Cleanup only; never spin/buy/bet. initialWaitMs sets future launch delay for this game only. Approval does not classify gameplay controls.',inputSchema:schema({id:str,sessionId:str,revision:{type:'integer',minimum:1},imageSha256:str,action:{enum:['wait','click','approve']},x:{type:'number',minimum:0,maximum:1},y:{type:'number',minimum:0,maximum:1},waitMs:{type:'integer',minimum:0,maximum:120000},initialWaitMs:{type:'integer',minimum:1000,maximum:120000},reason:str,reviewer:str},['id','sessionId','revision','imageSha256','action','reason','reviewer'])},
   {name:'next_item',description:'Claim next screenshot or structured control block. When mode is visual/hybrid returns JPEG too. Review immediately.',inputSchema:schema({runId:str,provider:str,leaseSeconds:{type:'integer',minimum:30,maximum:900}})},
   {name:'save_classification',description:'Save selected candidate IDs or normalized visual marks in one call. Do NOT execute any clicks here.',inputSchema:schema(saveFields,saveRequired)},
   {name:'save_and_next',description:'Save all decisions atomically and immediately claim the next item in the same MCP call; returns JPEG only for visual/hybrid modes.',inputSchema:schema({...saveFields,runId:str,provider:str,leaseSeconds:{type:'integer',minimum:30,maximum:900}},saveRequired)},
@@ -45,6 +49,11 @@ async function claimed(env,item){
 }
 async function tool(env,name,arg){
   switch(name){
+    case 'capture_reviews':return {content:[text(await listCaptureReviews(env,arg))]};
+    case 'capture_review_image':{
+      const row=await reviewRow(env,arg.id);return {content:[text({review:reviewPublic(row),hint:'Review loading/entry/cookie overlays. Only approve a clean usable image; otherwise instruct wait or a cleanup click. No gameplay actions.'}),await loadImage(env,row)]};
+    }
+    case 'capture_review_action':return {content:[text({review:await instructCapture(env,arg)})]};
     case 'audit_capture_validations':return {content:[text(await listValidations(env,arg))]};
     case 'capture_validation_preview':{
       const obj=await validationPreview(env,arg.id);return {content:[{type:'image',mimeType:'image/jpeg',data:toBase64(await obj.arrayBuffer())}]};
