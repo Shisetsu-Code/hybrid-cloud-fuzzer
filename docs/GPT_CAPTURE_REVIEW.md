@@ -27,6 +27,8 @@ counts the image as valid. No recurrence or automatic new batch is enabled.
 Approval permits ordinary item ingestion with captureValidation.reviewId and
 revision. The backend independently checks image hash, game, shot and run.
 Approval itself never saves gameplay classifications or executes purchases.
+If GPT approves after the runner stops, resuming the same batch retrieves the
+stored approved JPEG instead of replacing it with a new launch screenshot.
 
 Existing accepted catalogue items are skipped as before. Legacy OCR ingestion
 remains compatible for other producers. The guided catalogue workflow bypasses
