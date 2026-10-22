@@ -12,6 +12,13 @@ test('an invalidated reference can be replaced only by an approved image of the 
  await storeValidation(env,{runId:'r',provider:'p',gameId:'g',validatorVersion:'1',status:'ready',reasons:['same-game-instruments-match'],referenceId:'new',referenceSha256:'a'.repeat(64),sourceImageSha256:'a'.repeat(64),anchors:[{role:'balance',rect:[.1,.8,.1,.1]},{role:'bet',rect:[.3,.8,.1,.1]}]},new Uint8Array([255,216,255,217]));
  assert.equal((await validationReference(env,{provider:'p',gameId:'g'})).reference.id,'new');
 });
+test('approved intro controls provide a game-specific visual reference without copying other games',async()=>{
+ const row={id:'r:p:g:base',provider:'p',game_id:'g',image_sha256:'a'.repeat(64),revision:2,metadata_json:'{}',decisions_json:JSON.stringify({allMarks:[{kind:'navigate',label:'START',x:.5,y:.8}]})};
+ const env={IMAGES:{get:async()=>null},DB:{prepare:()=>({bind:(provider,game)=>({all:async()=>({results:provider==='p'&&game==='g'?[row]:[]})})})}};
+ const {reference}=await validationReference(env,{provider:'p',gameId:'g'});assert.equal(reference.stage,'intro');assert.equal(reference.anchors[0].role,'start');
+ assert.equal((await validationReference(env,{provider:'p',gameId:'another'})).reference,null);
+ row.decisions_json=JSON.stringify({allMarks:[{kind:'navigate',label:'Start spin',x:.5,y:.8}]});assert.equal((await validationReference(env,{provider:'p',gameId:'g'})).reference,null);
+});
 test('rejected captures remain private R2 diagnostics and never enter classification D1',async()=>{
  const objects=new Map();let writes=0;
  const env={DB:{prepare(){writes++;throw Error('diagnostics must not write D1');}},IMAGES:{
