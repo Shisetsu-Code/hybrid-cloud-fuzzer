@@ -21,6 +21,8 @@ export async function storeValidation(env,payload,jpeg){
  const bytes=new Uint8Array(jpeg);
  if(bytes.length<4||bytes.length>8*1024*1024||bytes[0]!==255||bytes[1]!==216||bytes.at(-2)!==255||bytes.at(-1)!==217)throw new InputError('valid JPEG comparison required');
  Object.assign(report,{status:payload.status,reasons:payload.reasons,anchors:anchors(payload.anchors||[]),createdAt:new Date().toISOString()});
+ if(report.status==='ready'&&new Set(report.anchors.filter(a=>['balance','bet','spin'].includes(a.role)).map(a=>a.role)).size<2)throw new InputError('ready requires two distinct core instruments');
+ if(report.status==='intro'&&!report.anchors.some(a=>a.role==='start'))throw new InputError('intro requires an actionable start control');
  if(payload.sourceImageSha256){if(!sha.test(payload.sourceImageSha256))throw new InputError('invalid source image hash');report.sourceImageSha256=payload.sourceImageSha256;}
  if(payload.referenceId){
   const row=await env.DB.prepare('SELECT * FROM items WHERE id=? AND provider=? AND game_id=? AND status=?').bind(payload.referenceId,report.provider,report.gameId,'classified').first();

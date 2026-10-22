@@ -27,6 +27,14 @@ test('validation previews require review auth and rejected screenshots do not en
   assert.equal((await worker.fetch(new Request(preview,{headers:{Authorization:'Bearer review-test'}}),f.env)).status,200);
  }finally{f.close();}
 });
+test('new GitHub catalogue captures require validation bound to their exact image',async()=>{
+ const f=fixture();try{
+  const payload=imageItem({runId:'readiness-gate',gameId:'unvalidated'});payload.metadata={source:'github-actions-catalogue'};
+  const form=new FormData();form.set('metadata',JSON.stringify(payload));form.set('image',new Blob([JPEG],{type:'image/jpeg'}),'game.jpg');
+  const response=await worker.fetch(new Request('https://worker.example/v1/items',{method:'POST',headers:{Authorization:'Bearer ingest-test'},body:form}),f.env);
+  assert.equal(response.status,409);assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM items').first()).n,0);
+ }finally{f.close();}
+});
 test('progress is private, run-scoped and observational',async()=>{
  const f=fixture();
  try{
