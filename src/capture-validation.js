@@ -33,7 +33,7 @@ export async function storeValidation(env,payload,jpeg){
  await env.IMAGES.put('validation/reports/'+report.runId+'/'+report.id+'.json',JSON.stringify(report),{httpMetadata:{contentType:'application/json'}});
  // Seed only from the exact already-classified JPEG, never from a rejected or
  // newly unreviewed capture. Existing per-game references are preserved.
- if(report.referenceId&&report.status==='ready'&&report.sourceImageSha256===report.referenceSha256&&new Set(report.anchors.map(a=>a.role)).size>=2){
+ if(report.referenceId&&report.status==='ready'&&report.sourceImageSha256===report.referenceSha256&&new Set(report.anchors.filter(a=>['balance','bet','spin'].includes(a.role)).map(a=>a.role)).size>=2){
   const key='validation/profiles/'+report.provider+'/'+report.gameId+'.json';
   const old=await env.IMAGES.get(key);let previous;try{previous=old?JSON.parse(await old.text()):null;}catch{}
   if(!await approvedProfile(env,previous,report.provider,report.gameId))await env.IMAGES.put(key,JSON.stringify({id:report.referenceId,provider:report.provider,gameId:report.gameId,imageSha256:report.referenceSha256,anchors:report.anchors}),{httpMetadata:{contentType:'application/json'}});
@@ -61,7 +61,7 @@ export async function validationReference(env,{provider,gameId}={}){
  for(const row of rows.results){
   let metadata;try{metadata=JSON.parse(row.metadata_json);}catch{continue;}
   const v=metadata.captureValidation;
-  if(v?.status!=='ready'||!Array.isArray(v.anchors)||new Set(v.anchors.map(a=>a.role)).size<2)continue;
+  if(v?.status!=='ready'||!Array.isArray(v.anchors)||new Set(v.anchors.filter(a=>['balance','bet','spin'].includes(a.role)).map(a=>a.role)).size<2)continue;
   return {reference:{id:row.id,provider:row.provider,gameId:row.game_id,imageSha256:row.image_sha256,anchors:anchors(v.anchors),revision:row.revision}};
  }
  return {reference:null};
