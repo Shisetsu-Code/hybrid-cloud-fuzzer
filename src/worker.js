@@ -6,6 +6,7 @@ import {setProviderPolicy,providerPolicies,acquireProviderSession,renewProviderS
 import {progressReport} from './progress.js';
 import {branchExecutions,claimBranch,finishBranch} from './branches.js';
 import {storeValidation,listValidations,validationPreview,validationReference} from './capture-validation.js';
+import {stageCapture,captureTiming,takeCaptureCommand} from './capture-review.js';
 
 function eqSecret(a,b){
   if(typeof a!=='string'||typeof b!=='string'||!a||!b)return false;
@@ -59,10 +60,19 @@ export default {
           const pacing=await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('provider_policies','provider_sessions')").first();
           const pacingReady=Number(pacing?.n)===2;
           const branches=await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='branch_executions'").first();
-          return json({captureValidationReady:true,branchCoordinationReady:Number(branches?.n)===1,ok:true,service:'hybrid-cloud-fuzzer',schemaVersion:pacingReady?4:workforceReady?3:2,workforceReady,pacingReady,storage:'R2',database:'D1',mcp:'/mcp'});}
+          const review=await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('capture_reviews','capture_timings')").first();
+          return json({captureReviewReady:Number(review?.n)===2,captureValidationReady:true,branchCoordinationReady:Number(branches?.n)===1,ok:true,service:'hybrid-cloud-fuzzer',schemaVersion:pacingReady?4:workforceReady?3:2,workforceReady,pacingReady,storage:'R2',database:'D1',mcp:'/mcp'});}
         catch{return json({ok:false,error:'D1/R2 not ready'},503);}
       }
       if(p==='/mcp')return authorized(request,env.MCP_TOKEN)?await handleMcp(request,env):reject();
+      if(p==='/v1/capture-reviews'&&request.method==='POST'){
+        if(!authorized(request,env.INGEST_TOKEN))return reject();
+        if(Number(request.headers.get('Content-Length'))>9*1024*1024)throw new InputError('capture too large',413);
+        const form=await request.formData();let data;try{data=JSON.parse(form.get('metadata'));}catch{throw new InputError('invalid metadata');}
+        const image=form.get('image');if(!image||typeof image.arrayBuffer!=='function'||image.size>8*1024*1024)throw new InputError('bounded JPEG required');
+        return json({review:await stageCapture(env,data,await image.arrayBuffer())},201);
+      }
+      if(p==='/v1/capture-reviews/command'&&request.method==='POST')return authorized(request,env.INGEST_TOKEN)?json({review:await takeCaptureCommand(env,await readJSON(request))}):reject();
       if(p==='/v1/items'&&request.method==='POST')return authorized(request,env.INGEST_TOKEN)?await upload(request,env):reject();
       if(p==='/v1/traces'&&request.method==='POST')return authorized(request,env.INGEST_TOKEN)?json(await recordTrace(env,await readJSON(request)),201):reject();
       if(p==='/v1/items/batch'&&request.method==='POST'){
@@ -80,6 +90,7 @@ export default {
       }
       if(p.startsWith('/v1/')){
         if(!authorized(request,env.REVIEW_TOKEN))return reject();
+        if(p==='/v1/capture-timing'&&request.method==='GET')return json(await captureTiming(env,{provider:url.searchParams.get('provider'),gameId:url.searchParams.get('gameId')}));
         if(p==='/v1/validation-reports'&&request.method==='GET')return json(await listValidations(env,{runId:url.searchParams.get('runId'),cursor:url.searchParams.get('cursor')||'',limit:Number(url.searchParams.get('limit')||30)}));
         if(p==='/v1/validation-reference'&&request.method==='GET')return json(await validationReference(env,{provider:url.searchParams.get('provider'),gameId:url.searchParams.get('gameId')}));
         if(p.startsWith('/v1/validation-previews/')&&request.method==='GET'){

@@ -178,7 +178,7 @@ test('MCP structured task has no image payload, tools list is present and auth r
     const bad=await worker.fetch(new Request('https://worker.example/mcp',{method:'POST',headers:{Authorization:'Bearer review-test','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})}),f.env);
     assert.equal(bad.status,401);
     const list=await worker.fetch(new Request('https://worker.example/mcp',{method:'POST',headers:{Authorization:'Bearer mcp-test','Content-Type':'application/json'},body:JSON.stringify({jsonrpc:'2.0',id:1,method:'tools/list',params:{}})}),f.env);
-    assert.equal((await list.json()).result.tools.length,10);
+    assert.equal((await list.json()).result.tools.length,13);
   }finally{f.close()}
 });
 
