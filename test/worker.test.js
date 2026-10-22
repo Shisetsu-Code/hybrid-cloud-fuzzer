@@ -4,6 +4,8 @@ import {DatabaseSync} from 'node:sqlite';
 import fs from 'node:fs';
 import worker from '../src/worker.js';
 import {inferMode,normalizeCandidates,validateItem,normalizeDecisions} from '../src/candidates.js';
+import {storeValidation} from '../src/capture-validation.js';
+import {hashHex} from '../src/core.js';
 const migration=fs.readFileSync(new URL('../migrations/0001_init.sql',import.meta.url),'utf8');
 function fixture({withoutTraces=false}={}){
   const sqlite=new DatabaseSync(':memory:');sqlite.exec(migration);if(!withoutTraces)sqlite.exec(fs.readFileSync(new URL('../migrations/0002_action_traces.sql',import.meta.url),'utf8'));
@@ -33,6 +35,17 @@ test('new GitHub catalogue captures require validation bound to their exact imag
   const form=new FormData();form.set('metadata',JSON.stringify(payload));form.set('image',new Blob([JPEG],{type:'image/jpeg'}),'game.jpg');
   const response=await worker.fetch(new Request('https://worker.example/v1/items',{method:'POST',headers:{Authorization:'Bearer ingest-test'},body:form}),f.env);
   assert.equal(response.status,409);assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM items').first()).n,0);
+ }finally{f.close();}
+});
+test('approved exact-image validation admits a capture and rejects a different JPEG',async()=>{
+ const f=fixture();try{
+  const payload=imageItem({runId:'validated-input',gameId:'valid'});
+  const report=await storeValidation(f.env,{runId:payload.runId,provider:payload.provider,gameId:payload.gameId,status:'ready',reasons:['visible-distinct-instruments'],validatorVersion:'1',sourceImageSha256:await hashHex(JPEG),anchors:[{role:'balance',rect:[.1,.8,.1,.1]},{role:'bet',rect:[.3,.8,.1,.1]}]},JPEG);
+  payload.metadata={source:'github-actions-catalogue',captureValidation:{status:'ready',reportId:report.id}};
+  const send=async(image)=>{const form=new FormData();form.set('metadata',JSON.stringify(payload));form.set('image',new Blob([image],{type:'image/jpeg'}),'game.jpg');return worker.fetch(new Request('https://worker.example/v1/items',{method:'POST',headers:{Authorization:'Bearer ingest-test'},body:form}),f.env);};
+  assert.equal((await send(JPEG)).status,201);
+  payload.shotId='different';assert.equal((await send(new Uint8Array([255,216,7,8,255,217]))).status,409);
+  assert.equal((await f.env.DB.prepare('SELECT COUNT(*) AS n FROM items').first()).n,1);
  }finally{f.close();}
 });
 test('progress is private, run-scoped and observational',async()=>{
