@@ -63,8 +63,14 @@ export async function validationReference(env,{provider,gameId}={}){
  for(const row of rows.results){
   let metadata;try{metadata=JSON.parse(row.metadata_json);}catch{continue;}
   const v=metadata.captureValidation;
-  if(v?.status!=='ready'||!Array.isArray(v.anchors)||new Set(v.anchors.filter(a=>['balance','bet','spin'].includes(a.role)).map(a=>a.role)).size<2)continue;
-  return {reference:{id:row.id,provider:row.provider,gameId:row.game_id,imageSha256:row.image_sha256,anchors:anchors(v.anchors),revision:row.revision}};
+  if(v?.status==='ready'&&Array.isArray(v.anchors)&&new Set(v.anchors.filter(a=>['balance','bet','spin'].includes(a.role)).map(a=>a.role)).size>=2)
+   return {reference:{id:row.id,provider:row.provider,gameId:row.game_id,imageSha256:row.image_sha256,anchors:anchors(v.anchors),revision:row.revision}};
+  let decisions;try{decisions=JSON.parse(row.decisions_json);}catch{continue;}
+  const control=(decisions?.allMarks||[]).find(m=>m.kind==='navigate'&&Number.isFinite(m.x)&&Number.isFinite(m.y)&&m.x>=0&&m.x<=1&&m.y>=0&&m.y<=1&&/^(start|continue|continuar|comenzar|iniciar|entrar|(?:click|tap) anywhere)\b/i.test(m.label||'')&&!/(spin|girar|apuesta|bet)/i.test(m.label||''));
+  if(control){
+   const x=Math.max(0,control.x-.1),y=Math.max(0,control.y-.05);
+   return {reference:{id:row.id,provider:row.provider,gameId:row.game_id,imageSha256:row.image_sha256,stage:'intro',anchors:[{role:'start',rect:[x,y,Math.min(.2,1-x),Math.min(.1,1-y)]}],revision:row.revision}};
+  }
  }
  return {reference:null};
 }
