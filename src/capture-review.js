@@ -17,6 +17,7 @@ export async function stageCapture(env,p,image){
   if(old.status!=='executing'||old.revision!==p.revision||action?.id!==p.commandId)throw new InputError('stale capture command',409);
  }
  const revision=(old?.revision||0)+1,key=`capture-review/${p.runId}/${p.provider}/${p.gameId}/${hash}.jpg`;
+ await env.DB.prepare('INSERT OR IGNORE INTO capture_timings(provider,game_id,wait_ms) VALUES(?,?,25000)').bind(p.provider,p.gameId).run();
  await env.IMAGES.put(key,image,{httpMetadata:{contentType:'image/jpeg'}});
  const history=JSON.parse(old?.history_json||'[]');if(old)history.push({revision:old.revision,imageSha256:old.image_sha256,action:JSON.parse(old.action_json||'null'),sessionId:old.session_id});
  if(history.length>40)throw new InputError('capture review step limit reached',409);
