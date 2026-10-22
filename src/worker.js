@@ -6,7 +6,7 @@ import {setProviderPolicy,providerPolicies,acquireProviderSession,renewProviderS
 import {progressReport} from './progress.js';
 import {branchExecutions,claimBranch,finishBranch} from './branches.js';
 import {storeValidation,listValidations,validationPreview,validationReference} from './capture-validation.js';
-import {stageCapture,captureTiming,takeCaptureCommand,reviewRow} from './capture-review.js';
+import {stageCapture,captureTiming,takeCaptureCommand,reviewRow,captureReviewPlan} from './capture-review.js';
 
 function eqSecret(a,b){
   if(typeof a!=='string'||typeof b!=='string'||!a||!b)return false;
@@ -61,7 +61,7 @@ export default {
           const pacingReady=Number(pacing?.n)===2;
           const branches=await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='branch_executions'").first();
           const review=await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('capture_reviews','capture_timings')").first();
-          return json({captureReviewReady:Number(review?.n)===2,captureValidationReady:true,branchCoordinationReady:Number(branches?.n)===1,ok:true,service:'hybrid-cloud-fuzzer',schemaVersion:pacingReady?4:workforceReady?3:2,workforceReady,pacingReady,storage:'R2',database:'D1',mcp:'/mcp'});}
+          return json({asyncCaptureReviewReady:Number(review?.n)===2,captureReviewReady:Number(review?.n)===2,captureValidationReady:true,branchCoordinationReady:Number(branches?.n)===1,ok:true,service:'hybrid-cloud-fuzzer',schemaVersion:pacingReady?4:workforceReady?3:2,workforceReady,pacingReady,storage:'R2',database:'D1',mcp:'/mcp'});}
         catch{return json({ok:false,error:'D1/R2 not ready'},503);}
       }
       if(p==='/mcp')return authorized(request,env.MCP_TOKEN)?await handleMcp(request,env):reject();
@@ -92,9 +92,11 @@ export default {
         if(!authorized(request,env.REVIEW_TOKEN))return reject();
         if(p.startsWith('/v1/capture-review-images/')&&request.method==='GET'){
           const row=await reviewRow(env,decodeURIComponent(p.slice('/v1/capture-review-images/'.length)));
-          const image=await env.IMAGES.get(row.image_key);if(!image)throw new InputError('review JPEG missing',404);
-          return new Response(image.body,{headers:{'Content-Type':'image/jpeg','Cache-Control':'no-store','X-Image-SHA256':row.image_sha256}});
+          const hash=url.searchParams.get('sha256')||row.image_sha256;if(!/^[a-f0-9]{64}$/.test(hash)||![row.image_sha256,...JSON.parse(row.history_json).map(h=>h.imageSha256)].includes(hash))throw new InputError('unknown review image',404);const key=`capture-review/${row.run_id}/${row.provider}/${row.game_id}/${hash}.jpg`;
+          const image=await env.IMAGES.get(key);if(!image)throw new InputError('review JPEG missing',404);
+          return new Response(image.body,{headers:{'Content-Type':'image/jpeg','Cache-Control':'no-store','X-Image-SHA256':hash}});
         }
+        if(p.startsWith('/v1/capture-reviews/')&&request.method==='GET')return json({review:await captureReviewPlan(env,decodeURIComponent(p.slice('/v1/capture-reviews/'.length)))});
         if(p==='/v1/capture-timing'&&request.method==='GET')return json(await captureTiming(env,{provider:url.searchParams.get('provider'),gameId:url.searchParams.get('gameId')}));
         if(p==='/v1/validation-reports'&&request.method==='GET')return json(await listValidations(env,{runId:url.searchParams.get('runId'),cursor:url.searchParams.get('cursor')||'',limit:Number(url.searchParams.get('limit')||30)}));
         if(p==='/v1/validation-reference'&&request.method==='GET')return json(await validationReference(env,{provider:url.searchParams.get('provider'),gameId:url.searchParams.get('gameId')}));
