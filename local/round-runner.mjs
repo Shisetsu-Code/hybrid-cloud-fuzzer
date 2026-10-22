@@ -18,7 +18,8 @@ const url=args.url||process.env.HYBRID_FUZZER_URL,reviewToken=process.env.HYBRID
 const cloud=new CloudClient({endpoint:url,reviewToken,ingestToken});
 const speed=validateSpeed(args.speed||1),limit=Number(args.limit||5),interval=Number(args['interval-ms']||15000);
 const waitMs=Number(args['wait-ms']||850),maxDepth=Number(args['max-depth']||7);
-if(!Number.isSafeInteger(limit)||limit<1||limit>200||!Number.isSafeInteger(interval)||interval<3000||!Number.isSafeInteger(waitMs)||waitMs<450||waitMs>10000||!Number.isSafeInteger(maxDepth)||maxDepth<1||maxDepth>12)throw Error('invalid CLI numeric arguments');
+if(!Number.isSafeInteger(limit)||limit<1||limit>200||!Number.isSafeInteger(interval)||interval<3000||!Number.isSafeInteger(waitMs)||waitMs<450||waitMs>10000||!Number.isSafeInteger(maxDepth)||maxDepth<1||maxDepth>7)throw Error('invalid CLI numeric arguments; coordinated max-depth must be 1..7');
+if(args['allow-normal-spin']===true)throw Error('normal spins are excluded by the coordinated continuation policy');
 let stop=false;const signal=()=>{stop=true;};process.on('SIGINT',signal);process.on('SIGTERM',signal);
 const run=async()=>{
  const {chromium}=await import('playwright');
