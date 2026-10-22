@@ -14,7 +14,7 @@ It does not update existing captures, classifications, secrets or provider pacin
 2. `POST /v1/branches/claim` validates that exact decision and atomically grants
    one reservation. A game cannot have concurrent execution reservations. Old
    traces and deterministic child IDs also prevent replay.
-3. The engine persists the reservation before opening the demo or clicking.
+3. The engine persists the reservation before opening the demo or clicking. It also acquires the existing global provider session and renews it before each click; disabled provider policies fail closed.
 4. A successful action uploads its child capture and sanitized trace, then calls
    `POST /v1/branches/finish`. Completion requires matching parent, child and trace.
 5. The child enters the ordinary classification queue, under the same run ID.

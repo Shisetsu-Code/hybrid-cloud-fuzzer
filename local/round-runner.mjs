@@ -24,8 +24,21 @@ const run=async()=>{
  const {chromium}=await import('playwright');
  const browser=await chromium.launch({headless:args.headed!==true});
  const limiter=new RateLimiter(path.join(output,'.throttle.json'),{maxPerMinute:3});
- const worker=new LoopController({cloud,runId:manifest.runId,outDir:output,limit,maxDepth,coordinated:true,allowNormalSpin:args['allow-normal-spin']===true,executor:async(task,source)=>{await limiter.reserve();return executeDemoBranch(task,source,
-  {browser,manifest:manifest.games,waitMs,speed,confirmAdult:args['confirm-adult']===true});}});
+ const worker=new LoopController({cloud,runId:manifest.runId,outDir:output,limit,maxDepth,coordinated:true,allowNormalSpin:args['allow-normal-spin']===true,executor:async(task,source)=>{
+  await limiter.reserve();
+  const workerId='branch-'+task.id;let session;const deadline=Date.now()+300000;
+  do{
+   if(stop||await updateDrainRequested())throw Error('continuation stopped before browser action');
+   session=await cloud.call('/v1/work/provider/lease',{method:'POST',body:JSON.stringify({provider:task.provider,runId:task.runId,gameId:task.gameId,workerId,leaseSeconds:900})});
+   if(session.granted)break;
+   if(['disabled','unconfigured'].includes(session.reason))throw Error('provider policy '+session.reason);
+   if(Date.now()>=deadline)throw Error('provider pacing wait exceeded');
+   await sleep(Math.min(30000,Math.max(1000,session.retryAfterMs||1000)));
+  }while(!session.granted);
+  const renew=()=>cloud.call('/v1/work/provider/renew',{method:'POST',body:JSON.stringify({leaseId:session.leaseId,workerId,leaseSeconds:900})});
+  try{return await executeDemoBranch(task,source,{browser,manifest:manifest.games,waitMs,speed,confirmAdult:args['confirm-adult']===true,beforeClick:renew});}
+  finally{await cloud.call('/v1/work/provider/release',{method:'POST',body:JSON.stringify({leaseId:session.leaseId,workerId})}).catch(e=>console.error('PROVIDER RELEASE',e.message));}
+ }});
  try{do{
   if(await updateDrainRequested())break;
   try{const res=await worker.once();console.log('ROUND',JSON.stringify(res));}

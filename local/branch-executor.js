@@ -16,7 +16,7 @@ export function screenPoint(point,{clip,aligned},viewport){
 export function actionEvidence(har){return {status:classifyTrace(har),endpoints:traceEndpoints(har),actions:summarizeHar(har).actions,validated:false};}
 export async function executeDemoBranch(task,source,{
  chromium,browser=null,manifest=[],waitMs=750,speed=1,headless=true,confirmAdult=false,log=console.log,
- openDemo=openPublicDemo,inspect=bestFrame,frameBox=screenshotBox,recorderFactory=createNetworkRecorder
+ openDemo=openPublicDemo,inspect=bestFrame,frameBox=screenshotBox,recorderFactory=createNetworkRecorder,beforeClick=async()=>{}
 }={}){
  if(!browser&&!chromium?.launch)throw Error('Playwright Chromium required');
  if(task.path.some(isCatalogueOverlayAction))throw Error('Catalogue consent is not a reviewed game branch');
@@ -60,6 +60,7 @@ export async function executeDemoBranch(task,source,{
    const last=i===task.path.length-1;
    if(last)recorder=recorderFactory(context,{maxEntries:500,maxFrames:200});
    // The pending journal is already durable BEFORE this click. Never silently retry it.
+   await beforeClick();
    actionIssued=true;await page.mouse.click(absolute.x,absolute.y,{delay:30});
    await page.waitForTimeout(Math.min(Math.max(waitMs,450),4000));
    if(last)observed=await recorder.finish();recorder=null;
