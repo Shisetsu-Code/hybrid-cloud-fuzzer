@@ -1,36 +1,33 @@
-# GPT quality review inside the current batch
+# Asynchronous GPT capture review — same batch
 
-Migration 0006 adds capture_reviews and capture_timings; existing items and
-classifications are untouched. Capture quality is separate from gameplay review.
+The GitHub-hosted runner visits every selected game once, using its persisted
+initial wait time, saves the private image and complete item metadata, then moves
+to the next game. It never polls GPT or holds a browser for a later reply.
+Pending quality images do not enter the valid classification queue.
 
-The GitHub-hosted runner uploads a private JPEG to POST /v1/capture-reviews
-(INGEST token) before item ingestion. Identity: runId/provider/gameId/shotId and
-random browser sessionId. A pending screenshot is not a valid catalogue item.
+GPT can respond hours or days later: MCP capture_reviews lists the backlog,
+capture_review_image loads a particular image, and capture_review_action records
+wait, normalized cleanup click, or approve against its exact revision/hash.
+initialWaitMs optionally changes this game's future launch delay; default 25000.
 
-GPT uses MCP capture_reviews (runId, cursor), capture_review_image (id), then
-capture_review_action with the exact sessionId/revision/imageSha256 shown.
-Actions: wait, click normalized x/y on the screenshot, or approve. reason and
-reviewer are mandatory. waitMs is the delay before the next screenshot;
-initialWaitMs optionally updates the starting delay for this game alone.
-Default delay is 25000 ms. No OCR, balance terms, Laya or Qwen decide readiness.
+Approval immediately ingests the saved exact JPEG into the valid queue, even
+when no runner is alive. It does not classify controls or execute gameplay.
+Repeated approval is idempotent. Existing accepted items are never replaced.
 
-The runner polls /v1/capture-reviews/command with INGEST token, renewing its
-provider permit. Taking an instruction consumes it atomically before execution.
-A lost delivery stops the runner instead of repeating a possible click. A new
-browser must publish a fresh image after the old session expires (120 seconds).
-Pending screenshots and prior instructions remain in D1/R2. Offline sessions
-cannot accept click/wait instructions. Approval remains bound to the exact JPEG.
+Wait/click instructions remain persisted until the next MANUAL execution of the
+same runId. The runner skips games still awaiting GPT, claims each decided
+operation once for a fresh browser, replays that game's recorded cleanup path,
+executes the next step, saves a new pending image and proceeds to other games.
+Reopened click screens are compared against the exact saved game image and
+point area (no OCR/model). A mismatch produces a fresh pending image instead of
+clicking stale coordinates. The actual verified launch path accompanies it.
 
-One browser waits at most ten minutes / twenty observations for GPT; timeout
-stops that provider with reviewPending, preserves the same batch, and never
-counts the image as valid. No recurrence or automatic new batch is enabled.
-Approval permits ordinary item ingestion with captureValidation.reviewId and
-revision. The backend independently checks image hash, game, shot and run.
-Approval itself never saves gameplay classifications or executes purchases.
-If GPT approves after the runner stops, resuming the same batch retrieves the
-stored approved JPEG instead of replacing it with a new launch screenshot.
+A claimed operation is not redelivered after uncertain execution. Its 15-minute
+execution lease only protects a running operation; it is NOT a deadline for GPT.
+GPT may replace an expired uncertain operation against the still-current source.
+No new batch, recurrence, purchases, spins or bets are authorized by this loop.
 
-Existing accepted catalogue items are skipped as before. Legacy OCR ingestion
-remains compatible for other producers. The guided catalogue workflow bypasses
-the OCR gate; it does not automatically classify, spin, buy or bet. GPT cleanup
-clicks must only dismiss entry/consent/overlay screens visible in this game.
+Storage reuses migration 0006's capture_reviews/capture_timings and private R2.
+Image metadata is stored alongside its JPEG. Approval independently checks the
+run/provider/game/shot/revision/hash in the ordinary ingestion gate. Legacy OCR
+producers remain compatible. No new secrets, bindings or migrations are needed.
