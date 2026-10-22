@@ -5,6 +5,7 @@ import {enqueueWork,claimWork,renewWork,finishWork,deferWork,agentHeartbeat,work
 import {setProviderPolicy,providerPolicies,acquireProviderSession,renewProviderSession,releaseProviderSession,providerWorkload} from './provider-pacing.js';
 import {progressReport} from './progress.js';
 import {branchExecutions,claimBranch,finishBranch} from './branches.js';
+import {storeValidation,listValidations,validationPreview,validationReference} from './capture-validation.js';
 
 function eqSecret(a,b){
   if(typeof a!=='string'||typeof b!=='string'||!a||!b)return false;
@@ -70,8 +71,21 @@ export default {
         const items=[];for(const x of value.items)items.push(await ingest(env,x));
         return json({items},201);
       }
+      if(p==='/v1/validation-reports'&&request.method==='POST'){
+        if(!authorized(request,env.INGEST_TOKEN))return reject();
+        if(Number(request.headers.get('Content-Length'))>9*1024*1024)throw new InputError('validation too large',413);
+        const form=await request.formData();let report;try{report=JSON.parse(form.get('metadata'));}catch{throw new InputError('invalid validation JSON');}
+        const image=form.get('image');if(!image||typeof image.arrayBuffer!=='function'||image.size>8*1024*1024)throw new InputError('validation JPEG required');
+        return json({report:await storeValidation(env,report,await image.arrayBuffer())},201);
+      }
       if(p.startsWith('/v1/')){
         if(!authorized(request,env.REVIEW_TOKEN))return reject();
+        if(p==='/v1/validation-reports'&&request.method==='GET')return json(await listValidations(env,{runId:url.searchParams.get('runId'),cursor:url.searchParams.get('cursor')||'',limit:Number(url.searchParams.get('limit')||30)}));
+        if(p==='/v1/validation-reference'&&request.method==='GET')return json(await validationReference(env,{provider:url.searchParams.get('provider'),gameId:url.searchParams.get('gameId')}));
+        if(p.startsWith('/v1/validation-previews/')&&request.method==='GET'){
+          const image=await validationPreview(env,p.slice('/v1/validation-previews/'.length));
+          return new Response(image.body,{headers:{'Content-Type':'image/jpeg','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+        }
         if(p==='/v1/branches'&&request.method==='GET')return json(await branchExecutions(env,{runId:url.searchParams.get('runId'),after:url.searchParams.get('after')||''}));
         if(p==='/v1/branches/claim'&&request.method==='POST')return json(await claimBranch(env,await readJSON(request)));
         if(p==='/v1/branches/finish'&&request.method==='POST')return json(await finishBranch(env,await readJSON(request)));
