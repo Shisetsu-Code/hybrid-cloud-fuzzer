@@ -42,6 +42,24 @@ function fakeExec(log){
   image:jpg,trace:{log:{version:'1.2',entries:[],_webSockets:[],_notice:'Sanitized DEMO diagnostics'}}
  }};
 }
+
+test('independent games overlap their waits and persist every concurrent journal entry',async()=>withDir(async outDir=>{
+ const cloud=fakeCloud([item('alpha'),item('beta'),item('gamma')]);
+ let active=0,peak=0,release;
+ const barrier=new Promise(resolve=>{release=resolve;});
+ const executor=async task=>{
+  active++;peak=Math.max(peak,active);if(active===3)release();
+  await barrier;active--;
+  return fakeExec([])(task);
+ };
+ const timeout=setTimeout(()=>release(),1000);
+ try{
+  const result=await new LoopController({cloud,executor,runId,outDir,concurrency:3,log:()=>{}}).once();
+  assert.equal(peak,3);assert.equal(result.completed,3);
+  const saved=JSON.parse(await fs.readFile(path.join(outDir,'.round-journal.json'),'utf8'));
+  assert.equal(Object.keys(saved.entries).length,3);assert.ok(Object.values(saved.entries).every(e=>e.status==='done'));
+ }finally{clearTimeout(timeout);}
+}));
 async function withDir(fn){
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'game-isolation-'));
  try{return await fn(dir);}finally{await fs.rm(dir,{force:true,recursive:true});}

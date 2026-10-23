@@ -49,6 +49,6 @@ export function providerTotals(games){
 }
 export async function progressReport(env,{runId}={}){
  requiredId(runId,'runId');
- const {results}=await env.DB.prepare('SELECT id,revision,source_sha256,provider,game_id,state,status,candidates_json,decisions_json,metadata_json FROM items WHERE run_id=? ORDER BY provider,game_id').bind(runId).all();
+ const {results}=await env.DB.prepare('SELECT id,revision,source_sha256,image_key,image_sha256,width,height,provider,game_id,state,status,candidates_json,decisions_json,metadata_json FROM items WHERE run_id=? ORDER BY provider,game_id').bind(runId).all();
  return {runId,updatedAt:new Date().toISOString(),...summarizeProgress(results||[])};
 }

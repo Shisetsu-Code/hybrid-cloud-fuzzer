@@ -10,9 +10,10 @@ import {updateDrainRequested} from './update-drain.js';
 const gameKey=item=>item.provider+'/'+item.gameId;
 
 export class LoopController{
- constructor({cloud,executor,runId,outDir='outbox',limit=20,maxDepth=7,allowNormalSpin=false,coordinated=false,log=console.log}={}){
+ constructor({cloud,executor,runId,outDir='outbox',limit=20,maxDepth=7,concurrency=8,allowNormalSpin=false,coordinated=false,log=console.log}={}){
   if(!runId||!cloud||!executor)throw Error('runId, cloud and executor required');
-  Object.assign(this,{cloud,executor,runId,outDir:path.resolve(outDir),limit,maxDepth,allowNormalSpin,coordinated,log});
+  if(!Number.isSafeInteger(concurrency)||concurrency<1||concurrency>32)throw Error('concurrency must be 1..32');
+  Object.assign(this,{cloud,executor,runId,outDir:path.resolve(outDir),limit,maxDepth,concurrency,allowNormalSpin,coordinated,log});
  }
  async uploadSaved(entry,journal){
   const {task,itemFile,imageFile,traceFile}=entry;
@@ -104,12 +105,12 @@ export class LoopController{
    if(selected.length>=this.limit)break;
   }
   const sources=new Map(items.map(i=>[i.id,i]));
-  for(const task of selected){
-   if(await updateDrainRequested())break;
+  const execute=async task=>{
+   if(await updateDrainRequested())return;
    const key=gameKey(task);
    let execution=null;
    try{
-    if(this.coordinated){execution=await this.cloud.claimBranch(task);if(!execution.acquired){this.log('BRANCH WAIT '+task.gameId+': '+execution.status);continue;}}
+    if(this.coordinated){execution=await this.cloud.claimBranch(task);if(!execution.acquired){this.log('BRANCH WAIT '+task.gameId+': '+execution.status);return;}}
     await journal.set(task,'running',execution?{execution}:{});
     const source=sources.get(task.parentId);
     const capture=await this.executor(task,source);
@@ -132,7 +133,15 @@ export class LoopController{
     blockedKeys.add(key);
     this.log('GAME STOPPED '+task.gameId+'/'+task.shotId+': '+e.message);
    }
-  }
+  };
+  // Independent games overlap loading and bonus waits; a game still has exactly
+  // one branch in flight, protected by the same durable execution ownership.
+  let cursor=0;
+  const workers=await Promise.allSettled(Array.from({length:Math.min(this.concurrency,selected.length)},async()=>{
+   while(cursor<selected.length){const task=selected[cursor++];await execute(task);}
+  }));
+  const failures=workers.filter(r=>r.status==='rejected');
+  if(failures.length)throw new AggregateError(failures.map(r=>r.reason),'branch worker persistence failed');
   return {
    completed,blocked,blockedGames:blockedKeys.size,
    waiting:selected.length===0,

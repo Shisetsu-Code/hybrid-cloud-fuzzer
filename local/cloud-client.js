@@ -1,4 +1,5 @@
 // REST client for the existing Cloudflare D1/R2 review and ingest API.
+import {createHash} from 'node:crypto';
 export class CloudClient{
  constructor({endpoint,reviewToken,ingestToken,fetcher=fetch}={}){
   if(!/^https:\/\//.test(endpoint||''))throw Error('HYBRID_FUZZER_URL must be HTTPS');
@@ -56,6 +57,15 @@ export class CloudClient{
   throw Error('game blockers exceed pagination budget');
  }
  async item(id){return (await this.call('/v1/items/'+encodeURIComponent(id))).item;}
+ async reviewedImage(reference){
+  const item=await this.item(reference.itemId);
+  if(item?.status!=='classified'||item.revision!==reference.revision||item.sourceSha256!==reference.sourceSha256||item.imageSha256!==reference.imageSha256)throw Error('visual reference classification changed');
+  const response=await this.fetcher(this.endpoint+'/v1/items/'+encodeURIComponent(item.id)+'/image',{headers:{Authorization:'Bearer '+this.reviewToken},signal:AbortSignal.timeout(30000)});
+  if(!response.ok)throw Error('visual reference image unavailable');
+  const image=Buffer.from(await response.arrayBuffer());
+  if(createHash('sha256').update(image).digest('hex')!==reference.imageSha256)throw Error('visual reference hash mismatch');
+  return image;
+ }
  async uploadCapture(item,image){
   if(item.mode==='structured')return this.call('/v1/items',{role:'ingest',method:'POST',body:JSON.stringify(item)});
   if(!image)throw Error('visual/hybrid upload requires JPEG');

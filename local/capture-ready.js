@@ -11,8 +11,8 @@ export async function waitForCaptureReady(page,provider,{
   await cleanup();
   const selected=await inspect(page,provider);
   const data=selected?.data;
-  const loading=!selected||(provider==='pragmatic'&&(
-   data.state==='LOADING'||(data.candidates?.length??0)===0&&
+  const loading=!selected||data.state==='LOADING'||data.metadata?.roundPhase==='loading'||(provider==='pragmatic'&&(
+   (data.candidates?.length??0)===0&&
    (data.adapter==='pragmatic-runtime'||data.metadata?.opaqueCanvas===true)
   ));
   if(!loading)return selected;

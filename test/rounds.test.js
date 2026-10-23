@@ -84,7 +84,7 @@ test('incorrect routine Spin/Autoplay/settings marks are not executed as explora
 test('Spanish routine controls are excluded without discarding purchases or antebets',()=>{
  const labels=['Girar','Men\u00fa','Autoplay','Aumentar apuesta','Reducir apuesta','Buy Free Spins $200','Ante bet'];
  const item={...base,candidates:[],decisions:{allMarks:labels.map(label=>({kind:'other',label,x:.5,y:.5}))}};
- assert.deepEqual(collectTasks([item]).map(t=>t.path.at(-1).label),['Buy Free Spins $200','Ante bet']);
+ assert.deepEqual(collectTasks([item]).map(t=>t.path.at(-1).label),['Menú','Buy Free Spins $200','Ante bet']);
 });
 
 
@@ -99,4 +99,12 @@ test('Pragmatic corporate capture URLs require the matching explicit public demo
 test('unknown-state coordinate marks await a runtime adapter instead of becoming execution attempts',()=>{
  const item={...base,state:'UNKNOWN',candidates:[],decisions:{allMarks:[{kind:'navigate',label:'Continue',x:.5,y:.5}]}};
  assert.equal(collectTasks([item]).length,0);
+});
+
+test('classified opaque screens bind coordinate replay to their immutable JPEG and current revision',()=>{
+ const item={...base,state:'UNKNOWN',hasImage:true,imageSha256:'b'.repeat(64),candidates:[],decisions:{allMarks:[{kind:'navigate',label:'Continue',x:.5,y:.5}]}};
+ const [task]=collectTasks([item]);assert.ok(task);
+ assert.deepEqual(task.path[0].visualReference,{itemId:item.id,revision:2,sourceSha256:item.sourceSha256,imageSha256:item.imageSha256});
+ assert.equal(chooseAction(task.path[0],item,[],{aligned:true,state:'UNKNOWN'}),null);
+ assert.equal(chooseAction(task.path[0],item,[],{aligned:true,state:'UNKNOWN',visualMatched:true}).match,'reviewed-coordinate');
 });

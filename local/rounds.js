@@ -44,8 +44,9 @@ export function resolveDemoUrl(item,{catalog=[]}={}){
  }else if(!approved || approved.url!==original){throw Error('non-Pragmatic demo must be explicitly listed in manifest');}
  return url.toString();
 }
-export function chooseAction(action,source,candidates,{aligned=false,state=null}={}){
+export function chooseAction(action,source,candidates,{aligned=false,state=null,visualMatched=false}={}){
  if(!aligned||!state||state!==action.state)return null;
+ if(action.visualReference&&!visualMatched)return null;
  if(!isNormalClick(action))return null;
  const savedCandidate=action.candidateId?source?.candidates?.find(c=>c.id===action.candidateId):null;
  const stablePath=action.controlPath||savedCandidate?.path;
@@ -62,11 +63,11 @@ export function chooseAction(action,source,candidates,{aligned=false,state=null}
   return {x:r.x+r.w/2,y:r.y+r.h/2,match:'runtime-label'};
  }
  // Coordinate-only marks are human reviewed; fail closed on unknown/changed state.
- if(state==='UNKNOWN')return null;
+ if(state==='UNKNOWN'&&!visualMatched)return null;
  return {x:action.x,y:action.y,match:'reviewed-coordinate'};
 }
 export class RoundJournal{
- constructor(file,state){this.file=file;this.entries=state.entries||{};this.version=1;}
+ constructor(file,state){this.file=file;this.entries=state.entries||{};this.version=1;this.pendingWrite=Promise.resolve();}
  static async open(file){
   const saved=await readJSON(file,{entries:{}});const journal=new RoundJournal(file,saved);let altered=false;
   for(const entry of Object.values(journal.entries))if(entry.status==='running'){entry.status='uncertain';entry.reason='interrupted after action may have occurred';altered=true;}
@@ -74,7 +75,12 @@ export class RoundJournal{
  }
  status(id){return this.entries[id]?.status||'new';}
  shouldRun(task){return this.status(task.id)==='new';}
- async flush(){await writeAtomic(this.file,{version:this.version,entries:this.entries});}
+ async flush(){
+  // Concurrent games must never race over writeAtomic's shared temporary file.
+  const snapshot=JSON.parse(JSON.stringify({version:this.version,entries:this.entries}));
+  this.pendingWrite=this.pendingWrite.then(()=>writeAtomic(this.file,snapshot));
+  await this.pendingWrite;
+ }
  async set(task,status,more={}){
   if(!['running','captured','done','uncertain','blocked','failed'].includes(status))throw Error('invalid task status');
   if(!task?.id)throw Error('missing task id');

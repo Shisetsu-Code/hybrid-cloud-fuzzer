@@ -2,7 +2,7 @@
 const safeId=/^[a-z0-9][a-z0-9_.-]{0,99}$/i;
 const kinds=new Set(['buy','navigate','pick','other']);
 const modes=new Set(['structured','hybrid','visual']);
-const states=new Set(['BASE','INTRO','BUY_MENU','CONFIRM','BONUS','UNKNOWN','OTHER']);
+const states=new Set(['BASE','INTRO','BUY_MENU','CONFIRM','BONUS','LOADING','UNKNOWN','OTHER']);
 const sources=new Set(['runtime','dom','manual','provider']);
 export class InputError extends Error { constructor(message,status=400){super(message);this.status=status;this.name='InputError';} }
 export function requiredId(value,label){if(typeof value!=='string'||!safeId.test(value))throw new InputError(`invalid ${label}`);return value;}

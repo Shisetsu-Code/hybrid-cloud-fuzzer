@@ -28,5 +28,18 @@ export function inspectDOM(){
     if(items.length===220)break;
   }
   const canvas=[...document.querySelectorAll('canvas')].some(c=>{const r=c.getBoundingClientRect();return r.width*r.height>innerWidth*innerHeight*.23;});
-  return {adapter:'generic-dom',adapterVersion:'1',state:'UNKNOWN',opaqueCanvas:canvas,candidates:items};
+  const text=(document.body?.innerText||'').slice(0,6000);
+  const labels=items.map(c=>c.label.trim());
+  const busy=[...document.querySelectorAll('[aria-busy="true"],[role="progressbar"]')].some(el=>rectOf(el)&&getComputedStyle(el).visibility!=='hidden'&&getComputedStyle(el).display!=='none');
+  let state='UNKNOWN',roundPhase='unknown';
+  const blockedReason=/\b(?:please log in|session expired|sesion (?:expirada|caducada))\b/i.test(text)?'session-expired':null;
+  if(blockedReason){state='OTHER';roundPhase='blocked';}
+  else if(/\b(?:free spins (?:left|remaining)|tiradas gratis restantes)\s*[:\-]?\s*[1-9]\d*\b/i.test(text)){state='BONUS';roundPhase='active';}
+  else if(busy){state='LOADING';roundPhase='loading';}
+  else if(/\b(?:confirm purchase|confirmar compra)\b/i.test(text)&&labels.some(s=>/^(?:confirm|confirmar|yes|si|ok)$/i.test(s))){state='CONFIRM';roundPhase='awaiting_confirmation';}
+  else if(labels.some(s=>/^stop$/i.test(s))){state='BASE';roundPhase='spinning';}
+  else if(/\b(?:total win|you won|premio total)\b/i.test(text)&&labels.some(s=>/^(?:collect|continue|click to continue|tap to continue|cobrar|continuar)$/i.test(s))){state='BONUS';roundPhase='result';}
+  else if(/\b(?:free spins|bonus|tiradas gratis)\b/i.test(text)&&labels.some(s=>/^(?:start free spins|start bonus|iniciar bonus)$/i.test(s))){state='BONUS';roundPhase='awaiting_start';}
+  else if(labels.some(s=>/^(?:spin|girar|start spin)$/i.test(s))&&!canvas){state='BASE';roundPhase='idle';}
+  return {adapter:'generic-dom',adapterVersion:'2',state,roundPhase,...(blockedReason?{blockedReason}:{}),opaqueCanvas:canvas,candidates:items};
 }
