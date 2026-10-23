@@ -33,6 +33,12 @@ test('a request or an unchanged base screen alone does not prove a completed rou
  const result=await settleGame({},'fixture',{inspect:async()=>screen('BASE','idle'),cleanup:async()=>{},sleep:async ms=>{time+=ms;},now:()=>time,pollMs:100,minIdleMs:200});
  assert.equal(result.outcome,'next_screen');assert.equal(result.completed,false);
 });
+
+test('the triggering spin ending does not complete a purchased bonus without a result',async()=>{
+ let time=0,reads=0;
+ const result=await settleGame({},'fixture',{inspect:async()=>++reads===1?screen('BASE','spinning'):screen('BASE','idle'),cleanup:async()=>{},sleep:async ms=>{time+=ms;},now:()=>time,pollMs:100,minIdleMs:100,purchaseAuthorized:true});
+ assert.equal(result.completed,false);assert.equal(result.reason,'purchase-result-not-observed');
+});
 test('a frozen bonus reaches its bounded timeout without an extra purchase or spin',async()=>{
  let time=0,clicks=0;
  const result=await settleGame({},'fixture',{inspect:async()=>screen('BONUS','active'),cleanup:async()=>{},sleep:async ms=>{time+=ms;},now:()=>time,pollMs:100,timeoutMs:300,click:async()=>clicks++});

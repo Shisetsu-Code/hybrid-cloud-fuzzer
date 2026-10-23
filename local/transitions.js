@@ -34,7 +34,7 @@ export async function settleGame(page,provider,{
  purchaseAuthorized=false,expectedState=null,onObservation=async()=>{}
 }={}){
  if(!Number.isFinite(timeoutMs)||timeoutMs<1||!Number.isFinite(pollMs)||pollMs<1||!Number.isFinite(minIdleMs)||minIdleMs<0)throw Error('invalid transition wait limits');
- const started=now(),actions=[],states=[],clicked=new Map();let idleSince=null,lastKey=null,lastStage=null,observedRound=false,selected=null;
+ const started=now(),actions=[],states=[],clicked=new Map();let idleSince=null,lastKey=null,lastStage=null,observedRound=false,observedResult=false,selected=null;
  const finish=(outcome,reason)=>({outcome,reason,completed:outcome==='completed',elapsedMs:now()-started,actions,states,selected});
  for(let attempt=0;attempt<=Math.ceil(timeoutMs/pollMs);attempt++){
   await cleanup();selected=await inspect(page,provider);await onObservation(selected);
@@ -44,6 +44,7 @@ export async function settleGame(page,provider,{
   const stateKey=JSON.stringify([data?.state,phase,(data?.candidates||[]).map(c=>[c.path,c.label])]);
   if(stateKey!==lastKey){idleSince=null;lastKey=stateKey;if(states.length<16)states.push({state:data?.state||'UNKNOWN',phase:phase||'unknown',atMs:now()-started});}
   if(['active','spinning','result'].includes(phase))observedRound=true;
+  if(phase==='result')observedResult=true;
   if(expectedState&&data?.state===expectedState&&!['loading','active','spinning'].includes(phase))return finish('next_screen','next-reviewed-step');
   const decision=transitionDecision(selected,{purchaseAuthorized});
   if(decision.kind==='click'){
@@ -59,7 +60,10 @@ export async function settleGame(page,provider,{
   }else if(decision.kind==='review')return finish('needs_review',decision.reason);
   else if(['idle','screen'].includes(decision.kind)){
    idleSince??=now();
-   if(now()-idleSince>=minIdleMs)return finish(decision.kind==='idle'&&observedRound?'completed':'next_screen',decision.kind==='idle'?'stable-idle':'stable-screen');
+   if(now()-idleSince>=minIdleMs){
+    if(decision.kind==='idle'&&purchaseAuthorized&&observedRound&&!observedResult)return finish('needs_review','purchase-result-not-observed');
+    return finish(decision.kind==='idle'&&observedRound?'completed':'next_screen',decision.kind==='idle'?'stable-idle':'stable-screen');
+   }
   }else idleSince=null;
   if(now()-started>=timeoutMs)break;
   await sleep(Math.min(pollMs,Math.max(0,timeoutMs-(now()-started))));

@@ -79,7 +79,7 @@ export function inspectPragmatic(){
     else if(items.some(c=>/\b(?:pick|choose|select)\b/i.test(c.label)))roundPhase='choice';
     else if(remaining>0)roundPhase='active';
   }
-  if(state==='BASE'&&items.some(c=>/^stop$/i.test(c.label.trim())))roundPhase='spinning';
+  if(state==='BASE'&&items.some(c=>/^stop$/i.test(c.label.trim())||/\/StopSpin_Button(?:\/|$)/i.test(c.path)))roundPhase='spinning';
   const foreground=state==='CONFIRM'?items.filter(c=>/ConfirmPurchaseWindow|FSPurchaseWindow|BuyWindow\/Content/i.test(c.path)):items;
   return {supported:true,adapter:'pragmatic-runtime',adapterVersion:'3',state,roundPhase,candidates:foreground.slice(0,250),opaqueCanvas:true};
 }
