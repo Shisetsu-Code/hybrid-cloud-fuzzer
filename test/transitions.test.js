@@ -10,6 +10,13 @@ test('confirmation belongs to an already reviewed purchase; it never starts a ne
  assert.equal(transitionDecision(selected,{purchaseAuthorized:true}).kind,'click');
  assert.equal(transitionDecision(screen('BASE','idle',[control('Buy free spins')]),{purchaseAuthorized:true}).kind,'idle');
 });
+
+test('real Pragmatic BuyWindow accept icon is a confirmation, never its reject icon',()=>{
+ const path='Game/BuyFeature/PurchaseManager/BuyWindow/Content/BF/Offset/Buttons/';
+ const s=screen('CONFIRM','awaiting_confirmation',[control('button / accept',path+'ButtonYes'),control('button / reject',path+'ButtonNo')]);
+ assert.equal(transitionDecision(s,{purchaseAuthorized:true}).control.path,path+'ButtonYes');
+ assert.equal(transitionDecision(s,{purchaseAuthorized:false}).kind,'review');
+});
 test('multiple choices and ambiguous confirmation buttons return to the image batch',()=>{
  assert.equal(transitionDecision(screen('BONUS','choice',[control('Pick 1'),control('Pick 2')]),{purchaseAuthorized:true}).kind,'review');
  assert.equal(transitionDecision(screen('CONFIRM','awaiting_confirmation',[control('Confirm','A'),control('Confirm','B')]),{purchaseAuthorized:true}).kind,'review');

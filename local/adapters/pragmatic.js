@@ -66,7 +66,7 @@ export function inspectPragmatic(){
   }
   let state=items.length?'BASE':'LOADING';
   if(paths.some(p=>/IntroScreen/i.test(p)))state='INTRO';
-  else if(paths.some(p=>/ConfirmPurchaseWindow|FSPurchaseWindow\/content\/Buttons/i.test(p)))state='CONFIRM';
+  else if(paths.some(p=>/ConfirmPurchaseWindow|FSPurchaseWindow\/content\/Buttons|BuyWindow\/Content\/.*\/Buttons\/ButtonYes$/i.test(p)))state='CONFIRM';
   else if(paths.some(p=>/PurchaseWindow\/content\/Options/i.test(p)))state='BUY_MENU';
   else if(paths.some(p=>/FreeSpins\/Content|StageResultFreeSpin/i.test(p)))state='BONUS';
   if(remaining>0&&!['INTRO','CONFIRM','BUY_MENU'].includes(state))state='BONUS';
@@ -80,5 +80,6 @@ export function inspectPragmatic(){
     else if(remaining>0)roundPhase='active';
   }
   if(state==='BASE'&&items.some(c=>/^stop$/i.test(c.label.trim())))roundPhase='spinning';
-  return {supported:true,adapter:'pragmatic-runtime',adapterVersion:'2',state,roundPhase,candidates:items.slice(0,250),opaqueCanvas:true};
+  const foreground=state==='CONFIRM'?items.filter(c=>/ConfirmPurchaseWindow|FSPurchaseWindow|BuyWindow\/Content/i.test(c.path)):items;
+  return {supported:true,adapter:'pragmatic-runtime',adapterVersion:'3',state,roundPhase,candidates:foreground.slice(0,250),opaqueCanvas:true};
 }

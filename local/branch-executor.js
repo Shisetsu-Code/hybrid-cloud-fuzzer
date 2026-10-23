@@ -100,8 +100,10 @@ export async function executeDemoBranch(task,source,{
    actionIssued=true;await page.mouse.click(absolute.x,absolute.y,{delay:30});
    executedSteps++;
    await page.waitForTimeout(Math.min(Math.max(waitMs,450),4000));
+   const next=task.path[i+1];
+   const expectedState=/\/BuyWindow\/Content\/.*\/Buttons\/ButtonYes$/i.test(next?.controlPath||'')?'CONFIRM':next?.state||null;
    settled=await settle(page,task.provider,{inspect,timeoutMs:transitionWaitMs,onObservation:keepAlive,
-    expectedState:task.path[i+1]?.state||null,purchaseAuthorized:task.path.slice(0,i+1).some(s=>s.kind==='buy'),
+    expectedState,purchaseAuthorized:task.path.slice(0,i+1).some(s=>s.kind==='buy'),
     cleanup:()=>cleanupOverlays(page,{provider:task.provider,url,confirmAdult,requireClear:true}),
     click:async(control,selected)=>{
      const current=await inspect(page,task.provider);

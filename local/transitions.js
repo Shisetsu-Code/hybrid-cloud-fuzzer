@@ -18,7 +18,7 @@ export function transitionDecision(selected,{purchaseAuthorized=false}={}){
  let allowed=[];
  if(data.state==='CONFIRM'||phase==='awaiting_confirmation'){
   if(!purchaseAuthorized)return {kind:'review',reason:'confirmation-without-reviewed-purchase'};
-  allowed=candidates.filter(c=>confirmation.test(normalize(c.label)));
+  allowed=candidates.filter(c=>confirmation.test(normalize(c.label))||/\/BuyWindow\/Content\/.*\/Buttons\/ButtonYes$/i.test(c.path||''));
  }else if(['awaiting_start','result'].includes(phase)){
   allowed=candidates.filter(c=>continuation.test(normalize(c.label)));
  }else if(data.state==='BASE'&&phase==='idle')return {kind:'idle'};

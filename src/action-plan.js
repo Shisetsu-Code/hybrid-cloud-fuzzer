@@ -21,7 +21,7 @@ export function eligibleReviewedPath(action,ancestors,{maxDepth=7,allowNormalSpi
  if(ancestors.some(isCatalogueOverlayAction)||isCatalogueOverlayAction(action))return false;
  const label=(action.label||'')+' '+(action.controlPath||'');
  const normalized=label.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
- if(/^(?:settings|configuracion|help|ayuda|sound|sonido|autoplay|autojuego|aumentar apuesta|reducir apuesta|increase bet|decrease bet)(?:\s|$)/i.test(normalized.trim()))return false;
+ if(/^(?:settings|configuracion|informacion|paytable|info|help|ayuda|sound|sonido|autoplay|autojuego|aumentar apuesta|reducir apuesta|disminuir apuesta|increase bet|decrease bet)(?:\s|$)/i.test(normalized.trim()))return false;
  if(!allowNormalSpin&&action.state==='BASE'&&/^(?:girar|spin|jugar|start spin)(?:\s|$)/i.test(normalized.trim()))return false;
  if(/AutoPlay|Settings|Gear|SoundToggle|HelpButton/i.test(label))return false;
  if(!allowNormalSpin&&action.state==='BASE'&&/(?:Spin[_/-]?Normal|Normal[_/-]?Spin|AutoSpin|SpinButton)/i.test(label))return false;
