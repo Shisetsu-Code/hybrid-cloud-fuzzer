@@ -2,7 +2,7 @@
 import {bestFrame,screenshotBox} from './select-frame.js';
 import {waitForCaptureReady} from './capture-ready.js';
 import {openPublicDemo,dismissKnownIntro,dismissCatalogueOverlays,captureWithoutCatalogueOverlays,isCatalogueOverlayAction} from './intro.js';
-import {speedUpGame} from './speed.js';
+import {speedUpGame,speedInit} from './speed.js';
 import {createNetworkRecorder,summarizeHar} from './har.js';
 import {chooseAction,resolveDemoUrl,classifyTrace,traceEndpoints} from './rounds.js';
 import {settleGame} from './transitions.js';
@@ -29,6 +29,7 @@ export async function executeDemoBranch(task,source,{
  const activeBrowser=browser||await chromium.launch({headless});let context,recorder,actionIssued=false;
  try{
   context=await activeBrowser.newContext({viewport:{width:1280,height:720},serviceWorkers:'block'});
+  if(speed>1)await context.addInitScript(speedInit,speed);
   let page=await context.newPage();page.setDefaultNavigationTimeout(45000);
   const response=await page.goto(url,{waitUntil:'domcontentloaded'});
   if(response&&response.status()>=400)throw Error('public DEMO HTTP '+response.status());
@@ -100,7 +101,7 @@ export async function executeDemoBranch(task,source,{
    executedSteps++;
    await page.waitForTimeout(Math.min(Math.max(waitMs,450),4000));
    const next=task.path[i+1];
-   const expectedState=/\/(?:BuyWindow\/Content\/.*\/Buttons\/ButtonYes|ConfirmWindow\/Buttons\/Button_Yes)$/i.test(next?.controlPath||'')?'CONFIRM':/\/FSWindows\/(?:FSStart|FSResult)\/ButtonContinue$/i.test(next?.controlPath||'')?'BONUS':next?.state||null;
+   const expectedState=/\/(?:BuyWindow\/Content\/.*\/Buttons\/ButtonYes|ConfirmWindow\/Buttons\/Button_Yes)$/i.test(next?.controlPath||'')?'CONFIRM':/(?:\/FSWindows\/(?:FSStart|FSResult)\/ButtonContinue|\/FreeSpins\/Banner\/Content\/Animated\/Texts\/FreeSpins\/Start\/ButtonContinue)$/i.test(next?.controlPath||'')?'BONUS':next?.state||null;
    settled=await settle(page,task.provider,{inspect,timeoutMs:transitionWaitMs,onObservation:keepAlive,
     expectedState,priorRoundObserved:transitions.some(t=>t.observedRound),priorResultObserved:transitions.some(t=>t.observedResult),purchaseAuthorized:task.path.slice(0,i+1).some(s=>s.kind==='buy'),
     cleanup:()=>cleanupOverlays(page,{provider:task.provider,url,confirmAdult,requireClear:true}),

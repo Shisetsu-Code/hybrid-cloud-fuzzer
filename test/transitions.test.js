@@ -76,3 +76,8 @@ test('observed FSResult continue collects the final award despite congratulation
  const c=control('CONGRATULATIONS! / YOU HAVE WON','Game/FSWindows/FSResult/ButtonContinue');
  assert.equal(transitionDecision(screen('BONUS','result',[c]),{purchaseAuthorized:true}).control,c);
 });
+
+test('observed Buzzing Wilds banner starts its free spins',()=>{
+ const c=control('10 / FREE SPINS','Game/FreeSpins/Banner/Content/Animated/Texts/FreeSpins/Start/ButtonContinue');
+ assert.equal(transitionDecision(screen('BONUS','awaiting_start',[c]),{purchaseAuthorized:true}).control,c);
+});

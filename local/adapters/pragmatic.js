@@ -75,7 +75,7 @@ export function inspectPragmatic(){
   let roundPhase=state==='LOADING'?'loading':state==='CONFIRM'?'awaiting_confirmation':state==='BASE'?'idle':'unknown';
   if(state==='BONUS'){
     if(paths.some(p=>/StageResultFreeSpin|FreeSpinResult|TotalWinWindow|FSWindows\/FSResult\/ButtonContinue/i.test(p)))roundPhase='result';
-    else if(paths.some(p=>/\/FSWindows\/FSStart\/ButtonContinue$/i.test(p))||continuations.length===1)roundPhase='awaiting_start';
+    else if(paths.some(p=>/(?:\/FSWindows\/FSStart\/ButtonContinue|\/FreeSpins\/Banner\/Content\/Animated\/Texts\/FreeSpins\/Start\/ButtonContinue)$/i.test(p))||continuations.length===1)roundPhase='awaiting_start';
     else if(paths.some(p=>/\/FreeSpins\/Bonus\/Content\/Buttons\/B_\d\//i.test(p)))roundPhase='choice';
     else if(items.some(c=>/\b(?:pick|choose|select)\b/i.test(c.label)))roundPhase='choice';
     else if(remaining>0)roundPhase='active';
