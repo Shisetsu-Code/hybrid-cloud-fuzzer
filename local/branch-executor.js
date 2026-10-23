@@ -131,7 +131,7 @@ export async function executeDemoBranch(task,source,{
   const evidence=actionEvidence(observed?.har||{log:{entries:[],_webSockets:[]}});
   const isAligned=box.aligned;
   const info={runId:task.runId,provider:task.provider,gameId:task.gameId,shotId:task.shotId,
-   state:result.data.state,mode:isAligned?result.data.mode:'visual',adapter:isAligned?result.data.adapter:'unaligned-frame',
+   state:result.data.state,mode:isAligned?(result.data.mode==='structured'?'hybrid':result.data.mode):'visual',adapter:isAligned?result.data.adapter:'unaligned-frame',
    adapterVersion:result.data.adapterVersion||'1',candidates:isAligned?result.data.candidates:[],width,height,
    metadata:{url,parentId:task.parentId,parentSourceSha256:task.parentSourceSha256,parentRevision:task.parentRevision,
     actionPath:replayPath.slice(0,executedSteps),source:'reviewed-branch-executor',frameAligned:isAligned,
