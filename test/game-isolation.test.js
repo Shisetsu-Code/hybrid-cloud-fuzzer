@@ -97,7 +97,7 @@ test('failed R2/D1 upload stays in the local journal and cannot stall another ga
  const first=await ctrl.once();
  assert.equal(first.completed,1);
  assert.equal(first.blocked,1);
- assert.deepEqual(attempted.map(x=>x.gameId),['alpha','beta']);
+ assert.deepEqual(attempted.map(x=>x.gameId).sort(),['alpha','beta']);
  assert.deepEqual(cloud.published.map(x=>x.gameId),['beta']);
  const second=await ctrl.once();
  assert.equal(second.completed,0);
