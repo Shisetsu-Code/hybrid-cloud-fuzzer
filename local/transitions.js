@@ -31,11 +31,11 @@ export function transitionDecision(selected,{purchaseAuthorized=false}={}){
 export async function settleGame(page,provider,{
  inspect=bestFrame,cleanup=async()=>{},click=async()=>{throw Error('continuation click unavailable');},
  sleep=ms=>page.waitForTimeout(ms),now=Date.now,pollMs=500,timeoutMs=180000,minIdleMs=2000,
- purchaseAuthorized=false,expectedState=null,onObservation=async()=>{}
+ purchaseAuthorized=false,expectedState=null,priorRoundObserved=false,priorResultObserved=false,onObservation=async()=>{}
 }={}){
  if(!Number.isFinite(timeoutMs)||timeoutMs<1||!Number.isFinite(pollMs)||pollMs<1||!Number.isFinite(minIdleMs)||minIdleMs<0)throw Error('invalid transition wait limits');
- const started=now(),actions=[],states=[],clicked=new Map();let idleSince=null,lastKey=null,lastStage=null,observedRound=false,observedResult=false,selected=null;
- const finish=(outcome,reason)=>({outcome,reason,completed:outcome==='completed',elapsedMs:now()-started,actions,states,selected});
+ const started=now(),actions=[],states=[],clicked=new Map();let idleSince=null,lastKey=null,lastStage=null,observedRound=priorRoundObserved,observedResult=priorResultObserved,selected=null;
+ const finish=(outcome,reason)=>({outcome,reason,completed:outcome==='completed',elapsedMs:now()-started,observedRound,observedResult,actions,states,selected});
  for(let attempt=0;attempt<=Math.ceil(timeoutMs/pollMs);attempt++){
   await cleanup();selected=await inspect(page,provider);await onObservation(selected);
   const data=selected?.data,phase=data?.metadata?.roundPhase;

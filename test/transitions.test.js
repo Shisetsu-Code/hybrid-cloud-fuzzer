@@ -65,3 +65,9 @@ test('observed FSStart award prompt starts free spins despite congratulations la
  const c=control('CONGRATULATIONS! / 10','Game/FSWindows/FSStart/ButtonContinue');
  assert.equal(transitionDecision(screen('BONUS','awaiting_start',[c]),{purchaseAuthorized:true}).control,c);
 });
+
+test('a reviewed result continuation retains prior observed round and result evidence',async()=>{
+ let time=0;
+ const r=await settleGame({},'fixture',{inspect:async()=>screen('BASE','idle'),cleanup:async()=>{},sleep:async n=>{time+=n;},now:()=>time,pollMs:100,minIdleMs:200,purchaseAuthorized:true,priorRoundObserved:true,priorResultObserved:true});
+ assert.equal(r.completed,true);assert.equal(r.observedResult,true);
+});

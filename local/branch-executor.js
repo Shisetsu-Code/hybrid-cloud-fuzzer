@@ -93,8 +93,7 @@ export async function executeDemoBranch(task,source,{
    await cleanupOverlays(page,{provider:task.provider,url,confirmAdult,requireClear:true});
    const absolute=screenPoint(position,shot,page.viewportSize());
    // Network observation is scoped to the clicked action, not loading/earlier branches.
-   const last=i===task.path.length-1;
-   if(last)recorder=recorderFactory(context,{maxEntries:500,maxFrames:200});
+   if(!recorder)recorder=recorderFactory(context,{maxEntries:500,maxFrames:200});
    // The pending journal is already durable BEFORE this click. Never silently retry it.
    await beforeClick();
    actionIssued=true;await page.mouse.click(absolute.x,absolute.y,{delay:30});
@@ -103,7 +102,7 @@ export async function executeDemoBranch(task,source,{
    const next=task.path[i+1];
    const expectedState=/\/(?:BuyWindow\/Content\/.*\/Buttons\/ButtonYes|ConfirmWindow\/Buttons\/Button_Yes)$/i.test(next?.controlPath||'')?'CONFIRM':next?.state||null;
    settled=await settle(page,task.provider,{inspect,timeoutMs:transitionWaitMs,onObservation:keepAlive,
-    expectedState,purchaseAuthorized:task.path.slice(0,i+1).some(s=>s.kind==='buy'),
+    expectedState,priorRoundObserved:transitions.some(t=>t.observedRound),priorResultObserved:transitions.some(t=>t.observedResult),purchaseAuthorized:task.path.slice(0,i+1).some(s=>s.kind==='buy'),
     cleanup:()=>cleanupOverlays(page,{provider:task.provider,url,confirmAdult,requireClear:true}),
     click:async(control,selected)=>{
      const current=await inspect(page,task.provider);
