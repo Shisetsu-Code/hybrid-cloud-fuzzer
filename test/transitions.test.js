@@ -71,3 +71,8 @@ test('a reviewed result continuation retains prior observed round and result evi
  const r=await settleGame({},'fixture',{inspect:async()=>screen('BASE','idle'),cleanup:async()=>{},sleep:async n=>{time+=n;},now:()=>time,pollMs:100,minIdleMs:200,purchaseAuthorized:true,priorRoundObserved:true,priorResultObserved:true});
  assert.equal(r.completed,true);assert.equal(r.observedResult,true);
 });
+
+test('observed FSResult continue collects the final award despite congratulation label',()=>{
+ const c=control('CONGRATULATIONS! / YOU HAVE WON','Game/FSWindows/FSResult/ButtonContinue');
+ assert.equal(transitionDecision(screen('BONUS','result',[c]),{purchaseAuthorized:true}).control,c);
+});

@@ -46,8 +46,9 @@ export function resolveDemoUrl(item,{catalog=[]}={}){
 }
 export function chooseAction(action,source,candidates,{aligned=false,state=null,visualMatched=false}={}){
  const knownConfirmation=state==='CONFIRM'&&/\/(?:BuyWindow\/Content\/.*\/Buttons\/ButtonYes|ConfirmWindow\/Buttons\/Button_Yes)$/i.test(action.controlPath||'');
+ const knownBonusContinue=state==='BONUS'&&action.kind==='navigate'&&/\/FSWindows\/(?:FSStart|FSResult)\/ButtonContinue$/i.test(action.controlPath||'');
  const knownBonusChoice=state==='BONUS'&&action.state==='BASE'&&action.kind==='pick'&&/\/FreeSpins\/Bonus\/Content\/Buttons\/B_\d\//i.test(action.controlPath||'');
- if(!aligned||!state||(state!==action.state&&!(state==='UNKNOWN'&&visualMatched)&&!knownConfirmation&&!knownBonusChoice))return null;
+ if(!aligned||!state||(state!==action.state&&!(state==='UNKNOWN'&&visualMatched)&&!knownConfirmation&&!knownBonusChoice&&!knownBonusContinue))return null;
  if(action.visualReference&&!visualMatched)return null;
  if(!isNormalClick(action))return null;
  const savedCandidate=action.candidateId?source?.candidates?.find(c=>c.id===action.candidateId):null;
