@@ -54,3 +54,9 @@ test('a known following reviewed step takes precedence over automatic confirmati
  const result=await settleGame({},'fixture',{inspect:async()=>screen('CONFIRM','awaiting_confirmation',[control('Confirm')]),cleanup:async()=>{},sleep:async ms=>{time+=ms;},now:()=>time,pollMs:100,minIdleMs:100,purchaseAuthorized:true,expectedState:'CONFIRM',click:async()=>clicks++});
  assert.equal(result.outcome,'next_screen');assert.equal(clicks,0);
 });
+
+test('Dancing Monkeys confirmation excludes its No button',()=>{
+ const path='Game/BuyFeature/ContentBuyFeature/Arrangeable/ConfirmWindow/Buttons/';
+ const s=screen('CONFIRM','awaiting_confirmation',[control('buy_feature_yes',path+'Button_Yes'),control('buy_feature_no',path+'Button_No')]);
+ assert.equal(transitionDecision(s,{purchaseAuthorized:true}).control.path,path+'Button_Yes');
+});

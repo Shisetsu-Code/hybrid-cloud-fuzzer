@@ -45,7 +45,7 @@ export function resolveDemoUrl(item,{catalog=[]}={}){
  return url.toString();
 }
 export function chooseAction(action,source,candidates,{aligned=false,state=null,visualMatched=false}={}){
- const knownConfirmation=state==='CONFIRM'&&/\/BuyWindow\/Content\/.*\/Buttons\/ButtonYes$/i.test(action.controlPath||'');
+ const knownConfirmation=state==='CONFIRM'&&/\/(?:BuyWindow\/Content\/.*\/Buttons\/ButtonYes|ConfirmWindow\/Buttons\/Button_Yes)$/i.test(action.controlPath||'');
  if(!aligned||!state||(state!==action.state&&!(state==='UNKNOWN'&&visualMatched)&&!knownConfirmation))return null;
  if(action.visualReference&&!visualMatched)return null;
  if(!isNormalClick(action))return null;
