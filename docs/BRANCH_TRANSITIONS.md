@@ -57,7 +57,8 @@ recognized. An opaque canvas with an unknown choice, ambiguous control or unknow
 bonus state returns to GPT's image batch. It is never declared complete merely
 because a timeout expired, a click occurred or the queue is empty.
 
-The default active-round timeout is three minutes. Repeated unchanged Continue
+The local default active-round timeout is three minutes; the GitHub continuation
+workflow allows ten minutes so long bonuses can drain. Repeated unchanged Continue
 prompts are clicked once and returned for review, not hammered. Expired sessions
 and HTTP failures are diagnosed separately. The executor never reloads after an
 uncertain purchase to buy it again.
@@ -78,3 +79,5 @@ planner, loading waits, concurrency, immutable replay images, durable ownership,
 and a real Chromium fixture exercising purchase confirmation through collection
 with exactly one action request. Mocked fixture success does not establish support
 for every live provider.
+
+Live evidence and limits: [23 October pilot](LIVE_PILOT_2026_10_23.md).
