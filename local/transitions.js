@@ -20,7 +20,7 @@ export function transitionDecision(selected,{purchaseAuthorized=false}={}){
   if(!purchaseAuthorized)return {kind:'review',reason:'confirmation-without-reviewed-purchase'};
   allowed=candidates.filter(c=>confirmation.test(normalize(c.label))||/\/(?:BuyWindow\/Content\/.*\/Buttons\/ButtonYes|ConfirmWindow\/Buttons\/Button_Yes)$/i.test(c.path||''));
  }else if(['awaiting_start','result'].includes(phase)){
-  allowed=candidates.filter(c=>continuation.test(normalize(c.label))||(phase==='result'&&/\/FreeSpins\/Banner\/.*\/ButtonContinue$/i.test(c.path||'')&&/you have won|total win/i.test(c.label))||/(?:\/FSWindows\/(?:FSStart|FSResult)\/ButtonContinue|\/FreeSpins\/Banner\/Content\/Animated\/Texts\/FreeSpins\/Start\/ButtonContinue)$/i.test(c.path||''));
+  allowed=candidates.filter(c=>continuation.test(normalize(c.label))||(phase==='result'&&/\/FreeSpins\/Banner\/.*\/ButtonContinue$/i.test(c.path||'')&&/you have won|total win/i.test(c.label))||/(?:\/FSWindows\/(?:FSStart|FSResult)\/ButtonContinue|\/FreeSpins\/Banner\/Content\/Animated\/Texts\/FreeSpins\/(?:Start|Result)\/ButtonContinue)$/i.test(c.path||''));
  }else if(data.state==='BASE'&&phase==='idle')return {kind:'idle'};
  else if(data.state==='BONUS')return {kind:'review',reason:'unknown-bonus-screen'};
  else if(['BUY_MENU','INTRO','CONFIRM'].includes(data.state)||candidates.length)return {kind:'screen'};
