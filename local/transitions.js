@@ -20,7 +20,7 @@ export function transitionDecision(selected,{purchaseAuthorized=false}={}){
   if(!purchaseAuthorized)return {kind:'review',reason:'confirmation-without-reviewed-purchase'};
   allowed=candidates.filter(c=>confirmation.test(normalize(c.label))||/\/(?:BuyWindow\/Content\/.*\/Buttons\/ButtonYes|ConfirmWindow\/Buttons\/Button_Yes)$/i.test(c.path||''));
  }else if(['awaiting_start','result'].includes(phase)){
-  allowed=candidates.filter(c=>continuation.test(normalize(c.label)));
+  allowed=candidates.filter(c=>continuation.test(normalize(c.label))||/\/FSWindows\/FSStart\/ButtonContinue$/i.test(c.path||''));
  }else if(data.state==='BASE'&&phase==='idle')return {kind:'idle'};
  else if(data.state==='BONUS')return {kind:'review',reason:'unknown-bonus-screen'};
  else if(['BUY_MENU','INTRO','CONFIRM'].includes(data.state)||candidates.length)return {kind:'screen'};

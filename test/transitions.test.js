@@ -60,3 +60,8 @@ test('Dancing Monkeys confirmation excludes its No button',()=>{
  const s=screen('CONFIRM','awaiting_confirmation',[control('buy_feature_yes',path+'Button_Yes'),control('buy_feature_no',path+'Button_No')]);
  assert.equal(transitionDecision(s,{purchaseAuthorized:true}).control.path,path+'Button_Yes');
 });
+
+test('observed FSStart award prompt starts free spins despite congratulations label',()=>{
+ const c=control('CONGRATULATIONS! / 10','Game/FSWindows/FSStart/ButtonContinue');
+ assert.equal(transitionDecision(screen('BONUS','awaiting_start',[c]),{purchaseAuthorized:true}).control,c);
+});

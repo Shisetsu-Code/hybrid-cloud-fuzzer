@@ -68,14 +68,15 @@ export function inspectPragmatic(){
   if(paths.some(p=>/IntroScreen/i.test(p)))state='INTRO';
   else if(paths.some(p=>/ConfirmPurchaseWindow|FSPurchaseWindow\/content\/Buttons|(?:BuyWindow\/Content\/.*\/Buttons\/ButtonYes|ConfirmWindow\/Buttons\/Button_Yes)$/i.test(p)))state='CONFIRM';
   else if(paths.some(p=>/PurchaseWindow\/content\/Options/i.test(p)))state='BUY_MENU';
-  else if(paths.some(p=>/FreeSpins\/Content|StageResultFreeSpin/i.test(p)))state='BONUS';
+  else if(paths.some(p=>/FreeSpins\/(?:Content|Bonus\/Content)|FSWindows\/FSStart|StageResultFreeSpin/i.test(p)))state='BONUS';
   if(remaining>0&&!['INTRO','CONFIRM','BUY_MENU'].includes(state))state='BONUS';
   const label=c=>String(c.label||'').trim().toLowerCase();
   const continuations=items.filter(c=>/^(?:continue|collect(?: win(?:nings)?| prize)?|start (?:free spins|bonus)|click to continue|tap to continue)$/.test(label(c)));
   let roundPhase=state==='LOADING'?'loading':state==='CONFIRM'?'awaiting_confirmation':state==='BASE'?'idle':'unknown';
   if(state==='BONUS'){
     if(paths.some(p=>/StageResultFreeSpin|FreeSpinResult|TotalWinWindow/i.test(p)))roundPhase='result';
-    else if(continuations.length===1)roundPhase='awaiting_start';
+    else if(paths.some(p=>/\/FSWindows\/FSStart\/ButtonContinue$/i.test(p))||continuations.length===1)roundPhase='awaiting_start';
+    else if(paths.some(p=>/\/FreeSpins\/Bonus\/Content\/Buttons\/B_\d\//i.test(p)))roundPhase='choice';
     else if(items.some(c=>/\b(?:pick|choose|select)\b/i.test(c.label)))roundPhase='choice';
     else if(remaining>0)roundPhase='active';
   }
