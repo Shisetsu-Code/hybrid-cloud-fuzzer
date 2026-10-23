@@ -39,6 +39,12 @@ export async function executeDemoBranch(task,source,{
   // Do not click the game while its site-level consent/age dialog is visible.
   await cleanupOverlays(page,{provider:task.provider,url,confirmAdult,graceMs:450,requireClear:true});
   let observed=null,settled=null,executedSteps=0;const transitions=[],references=new Map();
+  const replayPath=task.path.map(step=>({...step}));
+  const lastStep=replayPath.at(-1);
+  // Older visual classifications used BASE even for opaque canvases. Bind those
+  // manual marks to their reviewed image without changing existing task IDs.
+  if(lastStep&&!lastStep.controlPath&&source.hasImage&&source.imageSha256&&!lastStep.visualReference)
+   lastStep.visualReference={itemId:source.id,revision:source.revision,sourceSha256:source.sourceSha256,imageSha256:source.imageSha256};
   const visualMatch=async(step,selected,box)=>{
    if(!step.visualReference)return false;
    if(!loadReviewedImage)throw Error('visual reference loader required');
@@ -49,7 +55,7 @@ export async function executeDemoBranch(task,source,{
    return (await matchImage(page,reference,image,step)).matched;
   };
   for(let i=0;i<task.path.length;i++){
-   const step=task.path[i];
+   const step=replayPath[i];
    if(!['buy','navigate','pick','other'].includes(step.kind))throw Error('unreviewed action type');
    let candidate=null,position=null,shot=null;
    const controlDeadline=Date.now()+controlWaitMs;
@@ -126,7 +132,7 @@ export async function executeDemoBranch(task,source,{
    state:result.data.state,mode:isAligned?result.data.mode:'visual',adapter:isAligned?result.data.adapter:'unaligned-frame',
    adapterVersion:result.data.adapterVersion||'1',candidates:isAligned?result.data.candidates:[],width,height,
    metadata:{url,parentId:task.parentId,parentSourceSha256:task.parentSourceSha256,parentRevision:task.parentRevision,
-    actionPath:task.path.slice(0,executedSteps),source:'reviewed-branch-executor',frameAligned:isAligned,
+    actionPath:replayPath.slice(0,executedSteps),source:'reviewed-branch-executor',frameAligned:isAligned,
     terminal:evidence.status==='bet_request_observed'&&settled?.completed===true,
     roundOutcome:settled?.outcome||'needs_review',...(settled?.reason?{roundReason:settled.reason}:{}),transitions,
     evidenceStatus:evidence.status,networkDiagnostics:{format:'sanitized-har-1.2',summary:observed?.summary||{requests:0,actions:[],endpoints:[]}},

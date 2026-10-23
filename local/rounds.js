@@ -45,7 +45,7 @@ export function resolveDemoUrl(item,{catalog=[]}={}){
  return url.toString();
 }
 export function chooseAction(action,source,candidates,{aligned=false,state=null,visualMatched=false}={}){
- if(!aligned||!state||state!==action.state)return null;
+ if(!aligned||!state||(state!==action.state&&!(state==='UNKNOWN'&&visualMatched)))return null;
  if(action.visualReference&&!visualMatched)return null;
  if(!isNormalClick(action))return null;
  const savedCandidate=action.candidateId?source?.candidates?.find(c=>c.id===action.candidateId):null;

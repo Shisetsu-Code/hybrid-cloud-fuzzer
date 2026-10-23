@@ -108,3 +108,10 @@ test('classified opaque screens bind coordinate replay to their immutable JPEG a
  assert.equal(chooseAction(task.path[0],item,[],{aligned:true,state:'UNKNOWN'}),null);
  assert.equal(chooseAction(task.path[0],item,[],{aligned:true,state:'UNKNOWN',visualMatched:true}).match,'reviewed-coordinate');
 });
+
+test('a reviewed BASE coordinate can match an opaque UNKNOWN adapter only with verified pixels',()=>{
+ const step={kind:'buy',label:'Buy bonus',state:'BASE',x:.2,y:.2,visualReference:{}};
+ assert.equal(chooseAction(step,null,[],{aligned:true,state:'UNKNOWN'}),null);
+ assert.ok(chooseAction(step,null,[],{aligned:true,state:'UNKNOWN',visualMatched:true}));
+ assert.equal(chooseAction(step,null,[],{aligned:true,state:'CONFIRM',visualMatched:true}),null);
+});
