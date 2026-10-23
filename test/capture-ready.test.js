@@ -17,3 +17,9 @@ test('opaque fallback without controls is not proof that a Pragmatic game loaded
 test('does not change screenshot fallback for other providers',async()=>{
  const value=sample(0,'generic-dom');assert.equal(await waitForCaptureReady({},'other',{inspect:async()=>value}),value);
 });
+
+test('explicit loading is awaited for every provider, not only Pragmatic',async()=>{
+ let reads=0;const ready=sample(1,'generic-dom');
+ assert.equal(await waitForCaptureReady({},'bgaming',{inspect:async()=>++reads<3?{data:{state:'LOADING'}}:ready,sleep:async()=>{},timeoutMs:10,pollMs:1}),ready);
+ assert.equal(reads,3);
+});

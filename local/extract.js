@@ -22,7 +22,9 @@ export function frameSummary(result,{forceImage=false}={}){
   const candidates=distinct(raw);
   const mode=inferMode({state,candidates,opaqueCanvas:result.opaqueCanvas,forceImage});
   return {state,mode,adapter:result.adapter||'generic-dom',adapterVersion:result.adapterVersion||'1',candidates,
-    metadata:{opaqueCanvas:!!result.opaqueCanvas,extractedControls:candidates.length}};
+    metadata:{opaqueCanvas:!!result.opaqueCanvas,extractedControls:candidates.length,
+      ...(['loading','active','spinning','choice','awaiting_start','awaiting_confirmation','result','idle','blocked'].includes(result.roundPhase)?{roundPhase:result.roundPhase}:{}),
+      ...(result.blockedReason==='session-expired'?{blockedReason:result.blockedReason}:{})}};
 }
 // Optional adapter registry. Adding providers does not require changing cloud schema or MCP.
 export async function extractFromFrame(frame,{provider='unknown',forceImage=false}={}){
