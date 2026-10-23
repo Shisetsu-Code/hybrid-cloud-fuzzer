@@ -24,6 +24,9 @@ not need a classifier response for every known intermediate screen.
   ownership. Provider permits and start spacing still apply.
 - Concurrent journal writes are serialized. An interrupted action remains
   uncertain; restarting the runner never silently repeats it.
+- Provider capacity is checked before claiming an execution. Busy games are
+  deferred without a blocked journal entry, and providers are selected fairly so
+  a backlog from one provider does not occupy every execution slot.
 
 ## Running
 

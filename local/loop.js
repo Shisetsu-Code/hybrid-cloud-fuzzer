@@ -10,10 +10,10 @@ import {updateDrainRequested} from './update-drain.js';
 const gameKey=item=>item.provider+'/'+item.gameId;
 
 export class LoopController{
- constructor({cloud,executor,runId,outDir='outbox',limit=20,maxDepth=7,concurrency=8,allowNormalSpin=false,coordinated=false,log=console.log}={}){
+ constructor({cloud,executor,runId,outDir='outbox',limit=20,maxDepth=7,concurrency=8,reserve=async()=>null,release=async()=>{},allowNormalSpin=false,coordinated=false,log=console.log}={}){
   if(!runId||!cloud||!executor)throw Error('runId, cloud and executor required');
   if(!Number.isSafeInteger(concurrency)||concurrency<1||concurrency>32)throw Error('concurrency must be 1..32');
-  Object.assign(this,{cloud,executor,runId,outDir:path.resolve(outDir),limit,maxDepth,concurrency,allowNormalSpin,coordinated,log});
+  Object.assign(this,{cloud,executor,runId,outDir:path.resolve(outDir),limit,maxDepth,concurrency,reserve,release,allowNormalSpin,coordinated,log});
  }
  async uploadSaved(entry,journal){
   const {task,itemFile,imageFile,traceFile}=entry;
@@ -33,7 +33,7 @@ export class LoopController{
  async once(){
   await fs.mkdir(this.outDir,{recursive:true});
   const journal=await RoundJournal.open(path.join(this.outDir,'.round-journal.json'));
-  let blocked=0,completed=0;
+  let blocked=0,completed=0,deferred=0;
   const localBlocked=new Set();
 
   // Retried uploads are idempotent; *never* re-execute the associated click.
@@ -98,7 +98,11 @@ export class LoopController{
    maxDepth:this.maxDepth,maxTasks:3000,allowNormalSpin:this.allowNormalSpin
   });
   const selected=[],selectedGames=new Set();
-  for(const task of tasks){
+  const byProvider=new Map();
+  for(const task of tasks){if(!byProvider.has(task.provider))byProvider.set(task.provider,[]);byProvider.get(task.provider).push(task);}
+  const fair=[];
+  while([...byProvider.values()].some(q=>q.length))for(const queue of byProvider.values())if(queue.length)fair.push(queue.shift());
+  for(const task of fair){
    const key=gameKey(task);
    if(blockedKeys.has(key)||selectedGames.has(key))continue;
    selected.push(task);selectedGames.add(key);
@@ -108,12 +112,14 @@ export class LoopController{
   const execute=async task=>{
    if(await updateDrainRequested())return;
    const key=gameKey(task);
-   let execution=null;
+   let execution=null,reservation=null;
    try{
+    const source=sources.get(task.parentId);
+    reservation=await this.reserve(task,source);
+    if(reservation?.deferred){deferred++;return;}
     if(this.coordinated){execution=await this.cloud.claimBranch(task);if(!execution.acquired){this.log('BRANCH WAIT '+task.gameId+': '+execution.status);return;}}
     await journal.set(task,'running',execution?{execution}:{});
-    const source=sources.get(task.parentId);
-    const capture=await this.executor(task,source);
+    const capture=await this.executor(task,source,reservation);
     const prefix=task.runId+'__'+task.provider+'__'+task.gameId+'__'+task.shotId;
     const itemFile=path.join(this.outDir,prefix+'.json'),imageFile=path.join(this.outDir,prefix+'.jpg'),traceFile=path.join(this.outDir,'diagnostics',prefix+'.har');
     await fs.mkdir(path.dirname(traceFile),{recursive:true});
@@ -132,7 +138,7 @@ export class LoopController{
     blocked++;
     blockedKeys.add(key);
     this.log('GAME STOPPED '+task.gameId+'/'+task.shotId+': '+e.message);
-   }
+   }finally{if(reservation&&!reservation.deferred)await this.release(task,reservation);}
   };
   // Independent games overlap loading and bonus waits; a game still has exactly
   // one branch in flight, protected by the same durable execution ownership.
@@ -143,7 +149,7 @@ export class LoopController{
   const failures=workers.filter(r=>r.status==='rejected');
   if(failures.length)throw new AggregateError(failures.map(r=>r.reason),'branch worker persistence failed');
   return {
-   completed,blocked,blockedGames:blockedKeys.size,
+   completed,blocked,deferred,blockedGames:blockedKeys.size,
    waiting:selected.length===0,
    reason:selected.length?'executed':blockedKeys.size?'await-game-classification-or-review':'idle',
    scheduled:tasks.length,scheduledGames:selected.length,

@@ -61,7 +61,7 @@ export default {
           const pacingReady=Number(pacing?.n)===2;
           const branches=await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='branch_executions'").first();
           const review=await env.DB.prepare("SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name IN ('capture_reviews','capture_timings')").first();
-          return json({asyncCaptureReviewReady:Number(review?.n)===2,captureReviewReady:Number(review?.n)===2,captureValidationReady:true,branchCoordinationReady:Number(branches?.n)===1,ok:true,service:'hybrid-cloud-fuzzer',schemaVersion:pacingReady?4:workforceReady?3:2,workforceReady,pacingReady,storage:'R2',database:'D1',mcp:'/mcp'});}
+          return json({asyncCaptureReviewReady:Number(review?.n)===2,captureReviewReady:Number(review?.n)===2,captureValidationReady:true,branchTransitionsVersion:1,branchCoordinationReady:Number(branches?.n)===1,ok:true,service:'hybrid-cloud-fuzzer',schemaVersion:pacingReady?4:workforceReady?3:2,workforceReady,pacingReady,storage:'R2',database:'D1',mcp:'/mcp'});}
         catch{return json({ok:false,error:'D1/R2 not ready'},503);}
       }
       if(p==='/mcp')return authorized(request,env.MCP_TOKEN)?await handleMcp(request,env):reject();

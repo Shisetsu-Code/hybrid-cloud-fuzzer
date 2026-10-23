@@ -26,22 +26,20 @@ const run=async()=>{
  const {chromium}=await import('playwright');
  const browser=await chromium.launch({headless:args.headed!==true});
  const limiter=new RateLimiter(path.join(output,'.throttle.json'),{maxPerMinute:3});
- const worker=new LoopController({cloud,runId:manifest.runId,outDir:output,limit,maxDepth,concurrency,coordinated:true,allowNormalSpin:args['allow-normal-spin']===true,executor:async(task,source)=>{
-  await limiter.reserve();
-  const workerId='branch-'+task.id;let session;const deadline=Date.now()+300000;
-  do{
+ const worker=new LoopController({cloud,runId:manifest.runId,outDir:output,limit,maxDepth,concurrency,coordinated:true,allowNormalSpin:args['allow-normal-spin']===true,
+ reserve:async task=>{
+  const workerId='branch-'+task.id;
    if(stop||await updateDrainRequested())throw Error('continuation stopped before browser action');
-   session=await cloud.call('/v1/work/provider/lease',{method:'POST',body:JSON.stringify({provider:task.provider,runId:task.runId,gameId:task.gameId,workerId,leaseSeconds:900})});
-   if(session.granted)break;
-   if(['disabled','unconfigured'].includes(session.reason))throw Error('provider policy '+session.reason);
-   if(Date.now()>=deadline)throw Error('provider pacing wait exceeded');
-   await sleep(Math.min(30000,Math.max(1000,session.retryAfterMs||1000)));
-  }while(!session.granted);
+  const session=await cloud.call('/v1/work/provider/lease',{method:'POST',body:JSON.stringify({provider:task.provider,runId:task.runId,gameId:task.gameId,workerId,leaseSeconds:900})});
+  return session.granted?{session,workerId}:{deferred:true,reason:session.reason};
+ },
+ release:async(_task,{session,workerId})=>{await cloud.call('/v1/work/provider/release',{method:'POST',body:JSON.stringify({leaseId:session.leaseId,workerId})});},
+ executor:async(task,source,{session,workerId})=>{
+  await limiter.reserve();
   const renew=()=>cloud.call('/v1/work/provider/renew',{method:'POST',body:JSON.stringify({leaseId:session.leaseId,workerId,leaseSeconds:900})});
   let lastRenew=Date.now();
   const keepAlive=async()=>{if(Date.now()-lastRenew>=30000){await renew();lastRenew=Date.now();}};
-  try{return await executeDemoBranch(task,source,{browser,manifest:manifest.games,waitMs,speed,confirmAdult:args['confirm-adult']===true,beforeClick:renew,keepAlive,loadReviewedImage:reference=>cloud.reviewedImage(reference)});}
-  finally{await cloud.call('/v1/work/provider/release',{method:'POST',body:JSON.stringify({leaseId:session.leaseId,workerId})}).catch(e=>console.error('PROVIDER RELEASE',e.message));}
+  return executeDemoBranch(task,source,{browser,manifest:manifest.games,waitMs,speed,confirmAdult:args['confirm-adult']===true,beforeClick:renew,keepAlive,loadReviewedImage:reference=>cloud.reviewedImage(reference)});
  }});
  try{do{
   if(await updateDrainRequested())break;
